@@ -268,6 +268,24 @@ CELERY_BEAT_SCHEDULE = {
 # so the pipeline runs today; point these at real models as they land.
 
 CREDIBILITY_SCORER = env('CREDIBILITY_SCORER', default='credibility.scoring.HeuristicScorer')
+
+# Domain registration lookups over RDAP. This is the one part of Module 1 that
+# makes an outbound request; point it at NullRegistryClient to run offline,
+# which leaves domain age unknown rather than assuming anything.
+CREDIBILITY_REGISTRY_CLIENT = env(
+    'CREDIBILITY_REGISTRY_CLIENT', default='credibility.registry.RdapClient'
+)
+CREDIBILITY_RDAP_BOOTSTRAP = env(
+    'CREDIBILITY_RDAP_BOOTSTRAP', default='https://rdap.org/domain/'
+)
+CREDIBILITY_RDAP_TIMEOUT = env.float('CREDIBILITY_RDAP_TIMEOUT', default=10.0)
+
+# Identifies this system to every server it contacts. Put a real contact
+# address here before pointing it at anyone else's infrastructure.
+CREDIBILITY_USER_AGENT = env(
+    'CREDIBILITY_USER_AGENT',
+    default='OSINT-Sentry/1.0 (+registry lookup; contact: admin@localhost)',
+)
 CONTENT_ANALYZER = env('CONTENT_ANALYZER', default='content.pipeline.HeuristicAnalyzer')
 CONTENT_FETCHER = env('CONTENT_FETCHER', default='content.fetchers.NullFetcher')
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')

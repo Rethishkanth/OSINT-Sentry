@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from core.models import Source
 from credibility.models import CredibilityScore
-from credibility.tasks import score_source
+from credibility.tasks import refresh_domain_registration, score_source
 
 from .fetchers import get_fetcher
 from .models import ContentItem, ContentTopic, Entity, Topic
@@ -40,6 +40,10 @@ def check_credibility_gate(source) -> CredibilityScore | None:
 
     latest = source.credibility_scores.first()
     if latest is None:
+        # Cache the registry data first, or this first score — the one the gate
+        # acts on — is computed with the domain's age unknown. The lookup
+        # short-circuits when the cache is already fresh.
+        refresh_domain_registration.run(source.pk)
         score_id = score_source.run(source.pk)
         latest = CredibilityScore.objects.filter(pk=score_id).first()
 

@@ -16,7 +16,7 @@ endpoints, admin — is real and testable today.
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
-| `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | domain age / HTTPS / publisher rules | GBT + BERT |
+| `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT |
 | `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
 | `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | `NullFetcher` — crawls nothing | Scrapy spiders |
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap | RGCN (PyG/DGL) |
@@ -25,6 +25,43 @@ endpoints, admin — is real and testable today.
 Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
 in a real model is a settings change; no call site moves.
+
+## Module 1: what the credibility score actually measures
+
+Module 1 is no longer a placeholder. It reads **real domain registration data
+over RDAP** — the registries' own JSON-over-HTTP successor to WHOIS. No API
+key, no scraping, no third-party dependency, just `urllib`.
+
+That matters because the previous version faked it. It computed "domain age"
+from `Source.first_seen` — how long *this database* had known about the source
+— so a 30-year-old newspaper added today was penalised as new, while any row
+that had sat in the table for a year drifted upward. `heuristic-v2` fixes the
+inversion:
+
+| Case | v1 | v2 |
+| --- | --- | --- |
+| bbc.co.uk, added today | −15 "new" | +18, registered 1994 |
+| Domain registered 5 days ago, in our DB a year | +15 "established" | −25 |
+
+Other deliberate choices:
+
+- **HTTPS earns nothing.** It is free, automatic, and universal — every phishing
+  site has it — so its presence is not evidence. Its *absence* still costs 10.
+- **"Known to us" is recorded but never scored.** Rewarding it is circular. It
+  stays in `SourceFeatures` so the provenance hash covers it, at weight zero.
+- **Metadata cannot reach VERIFIED.** The score is capped at 82; the tier needs
+  85. No amount of clean WHOIS makes a publisher accurate, and the ceiling says
+  so structurally rather than in a comment.
+- **A failed lookup leaves age unknown, never "new."** An unreachable registry
+  must not be able to condemn a domain. Unresolved lookups retry on the nightly
+  sweep, because only an `ok` status counts as fresh.
+
+Network I/O lives solely in `credibility/registry.py` and is cached onto
+`Source` (30-day TTL) by `refresh_domain_registration`, so scoring itself makes
+no network call and stays fast enough to run inside a request.
+
+Set `CREDIBILITY_REGISTRY_CLIENT=credibility.registry.NullRegistryClient` to
+run fully offline.
 
 ## Layout
 

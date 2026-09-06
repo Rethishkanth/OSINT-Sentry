@@ -1,10 +1,11 @@
+from celery import chain
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import CredibilityScore
 from .serializers import CredibilityScoreSerializer, ScoreRequestSerializer
-from .tasks import score_source
+from .tasks import refresh_domain_registration, score_source
 
 
 class CredibilityScoreViewSet(viewsets.ReadOnlyModelViewSet):
@@ -29,6 +30,9 @@ def trigger_scoring(request):
 
     if serializer.validated_data['wait']:
         # Runs in-process. Useful when no worker is up, and for tests.
+        # The lookup short-circuits on a fresh cache, so the registry is only
+        # actually contacted when this source's data is stale or missing.
+        refresh_domain_registration.run(source.pk)
         score_id = score_source.run(source.pk)
         score = CredibilityScore.objects.get(pk=score_id)
         return Response(
@@ -36,7 +40,10 @@ def trigger_scoring(request):
             status=status.HTTP_201_CREATED,
         )
 
-    async_result = score_source.delay(source.pk)
+    async_result = chain(
+        refresh_domain_registration.si(source.pk),
+        score_source.si(source.pk),
+    ).delay()
     return Response(
         {'task_id': async_result.id, 'source': source.pk, 'status': 'queued'},
         status=status.HTTP_202_ACCEPTED,

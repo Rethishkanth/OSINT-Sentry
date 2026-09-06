@@ -349,10 +349,13 @@ tbody tr:hover { background: rgba(0, 240, 255, 0.06); }
   border: 1px solid currentColor;
   white-space: nowrap;
 }
-.badge.verified, .badge.high, .badge.analyzed, .badge.authentic { color: var(--green); }
-.badge.medium, .badge.processing, .badge.suspicious { color: var(--orange); }
-.badge.low, .badge.failed, .badge.manipulated { color: var(--magenta); }
-.badge.unknown, .badge.pending, .badge.inconclusive { color: var(--text-dim); }
+.badge.verified, .badge.high, .badge.analyzed, .badge.authentic,
+.badge.ok, .badge.active { color: var(--green); }
+.badge.inactive { color: var(--text-dim); }
+.badge.medium, .badge.processing, .badge.suspicious, .badge.redacted { color: var(--orange); }
+.badge.low, .badge.failed, .badge.manipulated, .badge.error { color: var(--magenta); }
+.badge.unknown, .badge.pending, .badge.inconclusive,
+.badge.not_found, .badge.unsupported, .badge.disabled { color: var(--text-dim); }
 
 .bar {
   position: relative;

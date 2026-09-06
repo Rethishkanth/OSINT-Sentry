@@ -1,14 +1,61 @@
 import logging
 
-from celery import shared_task
+from celery import chain, shared_task
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 from core.models import Source
 
 from .models import CredibilityScore
+from .registry import RegistryStatus, get_registry_client
 from .scoring import extract_features, get_scorer
 
 logger = logging.getLogger(__name__)
+
+# Registry records barely change, and every lookup is a request to someone
+# else's infrastructure. Re-checking a fresh record is pure waste.
+REGISTRY_TTL_DAYS = 30
+
+
+@shared_task
+def refresh_domain_registration(source_id, force=False):
+    """Cache the registry's view of a domain onto its Source.
+
+    This is the only place in Module 1 that touches the network, so scoring
+    itself stays fast and side-effect free. A failed lookup is recorded rather
+    than raised: an unreachable registry must leave the domain age *unknown*,
+    never imply the domain is new.
+
+    No Celery retry on failure, deliberately. The client already retries the
+    HTTP call, and anything still unresolved is picked up by the next
+    rescore_all_sources sweep, because only an 'ok' status counts as fresh.
+    """
+    try:
+        source = Source.objects.get(pk=source_id)
+    except ObjectDoesNotExist:
+        logger.warning('refresh_domain_registration: Source %s is gone', source_id)
+        return None
+
+    fresh_enough = (
+        source.registry_checked_at
+        and source.registry_status == RegistryStatus.OK
+        and (timezone.now() - source.registry_checked_at).days < REGISTRY_TTL_DAYS
+    )
+    if fresh_enough and not force:
+        logger.debug('Registry cache still fresh for %s', source.domain)
+        return source.registry_status
+
+    info = get_registry_client().lookup(source.domain)
+
+    Source.objects.filter(pk=source.pk).update(
+        domain_registered_at=info.registered_at or source.domain_registered_at,
+        registrar=info.registrar or source.registrar,
+        registry_status=info.status,
+        registry_checked_at=timezone.now(),
+        updated_at=timezone.now(),
+    )
+    logger.info('Registry lookup for %s: %s', source.domain, info.detail or info.status)
+    return info.status
 
 
 @shared_task(bind=True, max_retries=3)
@@ -44,8 +91,15 @@ def score_source(self, source_id):
 
 @shared_task
 def rescore_all_sources():
-    """Periodic sweep: rescore every active source."""
-    ids = Source.objects.filter(is_active=True).values_list('pk', flat=True)
+    """Periodic sweep: refresh registry data, then rescore every active source.
+
+    Chained per source so each score is computed from freshly cached metadata
+    rather than from whatever the last sweep happened to leave behind.
+    """
+    ids = list(Source.objects.filter(is_active=True).values_list('pk', flat=True))
     for source_id in ids:
-        score_source.delay(source_id)
+        chain(
+            refresh_domain_registration.si(source_id),
+            score_source.si(source_id),
+        ).delay()
     return len(ids)
