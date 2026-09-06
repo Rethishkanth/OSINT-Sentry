@@ -21,6 +21,9 @@ urlpatterns = [
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/', include('core.urls')),
+    path('api/credibility/', include('credibility.urls')),
+    path('api/content/', include('content.urls')),
+    path('api/social/', include('social.urls')),
 ]
 
 if settings.DEBUG:

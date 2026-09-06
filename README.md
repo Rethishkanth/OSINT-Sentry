@@ -2,8 +2,29 @@
 
 Django REST API backend + Vite/React frontend for the OSINT-Sentry analysis platform.
 
-This repo currently covers the **foundation phase** (Days 1–3 of the build plan):
-project skeleton, core data models, admin, auth/DRF scaffolding, and Celery wiring.
+Covers Days 1–6 of the build plan: project skeleton and data models (1–3), plus
+the credibility engine, content analysis pipeline, and social graph analysis
+(4–6) with audit logging across every model.
+
+## The ML seam
+
+The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
+analysis, and an RGCN plus RoBERTa for social graph work. **None of those models
+exist here.** Each one is an abstract base class with a dependency-free
+heuristic implementation behind it, so the pipeline — tasks, gating, signals,
+endpoints, admin — is real and testable today.
+
+| Setting | Interface | Default (heuristic) | Plan calls for |
+| --- | --- | --- | --- |
+| `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | domain age / HTTPS / publisher rules | GBT + BERT |
+| `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
+| `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | `NullFetcher` — crawls nothing | Scrapy spiders |
+| `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap | RGCN (PyG/DGL) |
+| `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons | RoBERTa |
+
+Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
+rows it writes, so heuristic output is never mistaken for model output. Swapping
+in a real model is a settings change; no call site moves.
 
 ## Layout
 
@@ -91,4 +112,36 @@ Smoke-test the worker:
 | `POST /api/auth/token/` | none | obtain JWT access/refresh pair |
 | `POST /api/auth/token/refresh/` | none | refresh access token |
 | `GET /api/sources/` | JWT | list tracked sources |
+| `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
+| `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
+| `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
+| `POST /api/content/ingest/` | JWT | submit a document; 409 if the credibility gate rejects it |
+| `POST /api/content/{id}/analyze/` | JWT | re-run analysis |
+| `GET /api/social/accounts/` | JWT | accounts with bot-likelihood and coordination scores |
+| `GET /api/social/accounts/flagged/` | JWT | accounts over a bot-likelihood threshold |
+| `GET /api/social/posts/` | JWT | posts with sentiment and toxicity |
+| `POST /api/social/refresh-scores/` | JWT | queue a full graph rescore |
 | `/admin/` | session | inspect all models |
+
+## How the modules connect
+
+1. Creating a `Source` fires a `post_save` signal that queues `score_source`
+   on commit — scoring is never triggered by hand.
+2. `ingest_item` puts every document through that score before saving it. A
+   source below `CONTENT_MIN_CREDIBILITY` (default 25) is rejected, and one
+   that has never been scored is scored inline rather than waved through.
+3. A stored `ContentItem` queues `analyze_content`, which writes entities,
+   topics, and a summary. Re-running replaces prior output instead of
+   duplicating it.
+4. `refresh_graph_scores` rebuilds the interaction graph and rescores every
+   account in one bulk update.
+5. Every model write outside the excluded apps lands in `AuditLogEntry` with
+   the acting user, IP, and a field-level diff.
+
+Periodic work is registered with Celery Beat (`DatabaseScheduler`, so schedules
+are editable in the admin): hourly ingest, nightly rescore, nightly graph
+refresh. Run it alongside the worker:
+
+```bash
+.venv/Scripts/celery.exe -A backend beat -l info
+```

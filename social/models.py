@@ -19,8 +19,20 @@ class SocialAccount(TimeStampedModel):
     external_id = models.CharField(max_length=128, blank=True, db_index=True)
     follower_count = models.PositiveIntegerField(null=True, blank=True)
     account_created_at = models.DateTimeField(null=True, blank=True)
-    # Set by the coordinated-behaviour detector in a later phase.
-    bot_likelihood = models.FloatField(null=True, blank=True)
+
+    # Written by social.tasks.refresh_graph_scores.
+    bot_likelihood = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='0-1, probability the account is automated',
+    )
+    coordination_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='0-1, how much the account moves in lockstep with others',
+    )
+    graph_model_version = models.CharField(max_length=64, blank=True)
+    scored_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['platform', 'handle']
@@ -68,3 +80,39 @@ class InteractionEdge(TimeStampedModel):
 
     def __str__(self):
         return f'{self.from_account} -{self.edge_type}-> {self.to_account}'
+
+
+class SocialPost(TimeStampedModel):
+    """A post authored by a tracked account, with per-post text scoring."""
+
+    account = models.ForeignKey(
+        SocialAccount,
+        on_delete=models.CASCADE,
+        related_name='posts',
+    )
+    external_id = models.CharField(max_length=128, blank=True, db_index=True)
+    url = models.URLField(max_length=1000, blank=True)
+    text = models.TextField()
+    posted_at = models.DateTimeField(null=True, blank=True)
+    reshare_count = models.PositiveIntegerField(null=True, blank=True)
+
+    # Written by social.tasks.score_post.
+    sentiment = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='-1 (negative) to 1 (positive)',
+    )
+    toxicity = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='0-1, higher is more toxic',
+    )
+    text_model_version = models.CharField(max_length=64, blank=True)
+    scored_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-posted_at', '-created_at']
+        indexes = [models.Index(fields=['account', '-posted_at'])]
+
+    def __str__(self):
+        return f'{self.account}: {self.text[:60]}'

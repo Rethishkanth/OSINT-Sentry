@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 from django.core.exceptions import ImproperlyConfigured
 
 # backend/settings/base.py -> backend/settings -> backend -> project root
@@ -52,6 +53,7 @@ THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'django_celery_results',
+    'django_celery_beat',
 ]
 
 LOCAL_APPS = [
@@ -75,6 +77,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # After authentication, so request.user is populated when it binds.
+    'security.middleware.AuditActorMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -240,3 +244,34 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TIMEZONE = TIME_ZONE
+
+# Schedules live in the database and are editable in the admin, so an operator
+# can retune the crawl cadence without a redeploy.
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULE = {
+    'ingest-active-sources-hourly': {
+        'task': 'content.tasks.run_scheduled_ingest',
+        'schedule': crontab(minute=0),
+    },
+    'rescore-sources-nightly': {
+        'task': 'credibility.tasks.rescore_all_sources',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    'refresh-social-graph-scores-nightly': {
+        'task': 'social.tasks.refresh_graph_scores',
+        'schedule': crontab(hour=4, minute=0),
+    },
+}
+
+
+# Pluggable model implementations. Each defaults to a dependency-free heuristic
+# so the pipeline runs today; point these at real models as they land.
+
+CREDIBILITY_SCORER = env('CREDIBILITY_SCORER', default='credibility.scoring.HeuristicScorer')
+CONTENT_ANALYZER = env('CONTENT_ANALYZER', default='content.pipeline.HeuristicAnalyzer')
+CONTENT_FETCHER = env('CONTENT_FETCHER', default='content.fetchers.NullFetcher')
+SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
+SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
+
+# Sources scoring below this are not ingested from at all.
+CONTENT_MIN_CREDIBILITY = env.float('CONTENT_MIN_CREDIBILITY', default=25.0)
