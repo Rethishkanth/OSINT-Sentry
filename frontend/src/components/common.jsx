@@ -22,6 +22,24 @@ export function ScoreBar({ value, max = 1, risk = false }) {
   )
 }
 
+/**
+ * A rating out of 10 with its tag. `score` may be null, which is a real
+ * state and not an error: both engines withhold a number rather than guess
+ * when they could not actually check.
+ */
+export function TenPointRating({ score, label, tone = 'var(--text)', size = 22 }) {
+  const has = score !== null && score !== undefined
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: size, fontWeight: 700, color: tone, lineHeight: 1 }}>
+        {has ? score.toFixed(1) : '—'}
+        {has && <span style={{ fontSize: size * 0.5, color: 'var(--text-dim)' }}>/10</span>}
+      </span>
+      <span className="badge" style={{ color: tone, borderColor: tone }}>{label}</span>
+    </span>
+  )
+}
+
 export function Empty({ children = 'No records' }) {
   return <div className="empty">// {children}</div>
 }

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import CredibilityScore, TrustTier
+from .models import CredibilityScore, SiteInspection, TrustTier
 
 TIER_COLORS = {
     TrustTier.VERIFIED: '#0b6b3a',
@@ -30,3 +30,25 @@ class CredibilityScoreAdmin(admin.ModelAdmin):
             TIER_COLORS.get(obj.trust_tier, '#616161'),
             obj.get_trust_tier_display(),
         )
+
+
+@admin.register(SiteInspection)
+class SiteInspectionAdmin(admin.ModelAdmin):
+    list_display = (
+        'source', 'rating_out_of_ten', 'rating', 'ad_networks', 'trackers',
+        'uses_https', 'engine_version', 'created_at',
+    )
+    list_filter = ('rating', 'uses_https', 'engine_version')
+    search_fields = ('source__domain', 'summary')
+    autocomplete_fields = ('source',)
+    date_hierarchy = 'created_at'
+    # Observed evidence. Editing it by hand would make the stored reasons a
+    # lie about how the rating was reached.
+    readonly_fields = (
+        'score', 'rating', 'summary', 'reasons', 'findings', 'checked_url',
+        'ad_networks', 'trackers', 'uses_https', 'engine_version',
+    )
+
+    @admin.display(description='Rating', ordering='score')
+    def rating_out_of_ten(self, obj):
+        return f'{obj.score:.1f}/10' if obj.score is not None else '—'

@@ -33,7 +33,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit
 
 from django.conf import settings
@@ -96,6 +96,16 @@ class FetchResponse:
     content_type: str
     body: bytes
     truncated: bool
+    # Response headers, names lowercased. Kept because what a server declares
+    # about itself — HSTS, CSP, Set-Cookie — is evidence in its own right,
+    # and credibility.inspection reads it.
+    headers: dict = field(default_factory=dict)
+    cookies: tuple = ()
+    # Every URL in the redirect chain, first to last.
+    hops: tuple = ()
+
+    def header(self, name: str) -> str:
+        return self.headers.get(name.lower(), '')
 
     def text(self) -> str:
         """Decode the body, preferring the charset the server declared."""
@@ -270,8 +280,10 @@ def request(url: str, *, accept: str = 'text/html,application/xhtml+xml,*/*;q=0.
 
     current = url
     seen = set()
+    hops: list[str] = []
 
     for hop in range(max_redirects + 1):
+        hops.append(current)
         if current in seen:
             raise FetchError('Redirect loop.')
         seen.add(current)
@@ -309,6 +321,9 @@ def request(url: str, *, accept: str = 'text/html,application/xhtml+xml,*/*;q=0.
                     content_type=content_type,
                     body=body,
                     truncated=truncated,
+                    headers={k.lower(): v for k, v in response.headers.items()},
+                    cookies=tuple(response.headers.get_all('Set-Cookie') or ()),
+                    hops=tuple(hops),
                 )
         except urllib.error.HTTPError as exc:
             if exc.code in (301, 302, 303, 307, 308) and hop < max_redirects:

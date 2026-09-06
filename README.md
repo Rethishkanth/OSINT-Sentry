@@ -26,6 +26,71 @@ Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
 in a real model is a settings change; no call site moves.
 
+## Module 1: is the site itself safe? — a second rating out of 10
+
+The credibility score reads registration metadata. That says nothing about
+what the site *serves*. **Inspect site** fetches the homepage, opens a TLS
+connection, and reads the certificate, the response headers and the markup,
+then rates out of 10 how safe and how cluttered the site is — SAFE, MOSTLY
+SAFE, SOME CONCERNS, CAUTION, UNSAFE — with every deduction shown.
+
+Real results, same run:
+
+| Site | Rating | Why |
+| --- | --- | --- |
+| theguardian.com | **9.8 SAFE** | full security headers, one tracker |
+| hindustantimes.com | **6.7 SOME CONCERNS** | 7 ad networks, 5 trackers, 3 headers missing |
+
+and the second one names them: Google Ad Manager, AdSense, Taboola, Criteo,
+Amazon Ads, Xandr, 33Across; Chartbeat, Comscore, Google Analytics.
+
+**This is deliberately not folded into the credibility score.** The two answer
+different questions — "is this publisher reliable" versus "is this site safe
+to open" — and a reputable outlet buried in advertising should show both
+facts rather than one number that splits the difference. The credibility
+score's documented ceiling and provenance hash stay untouched.
+
+### What it checks
+
+- **Transport** — HTTPS, whether plain HTTP is upgraded, and the certificate:
+  issuer, protocol, days to expiry, and *why* it is invalid when it is
+  (Python's own verification message, which is already in plain English).
+- **What the site declares** — HSTS, CSP, X-Content-Type-Options, clickjacking
+  protection, Referrer-Policy. Absence is not an attack; a site with none of
+  them is not paying attention.
+- **Monetisation and surveillance** — ad networks, aggressive pop-under
+  networks, trackers, session recorders, push-notification nagware, and
+  in-browser crypto miners, matched against a plain readable list in
+  `credibility/trackers.py` so a finding can be argued with. Inline snippets
+  (`gtag(`, `fbq(`) are caught even when the script host is self-hosted.
+- **Clutter** — pop-up and interstitial containers, auto-playing media,
+  embedded frames, meta-refresh redirects, third-party resource volume.
+- **Mixed content and insecure forms**, including the one thing that overrides
+  everything else.
+
+### Three judgements worth knowing about
+
+**A password field posting over plaintext HTTP caps the rating at 3/10**, no
+matter how tidy the rest of the site is. That is not a hygiene issue.
+
+**A cryptocurrency miner is the single heaviest finding (−4).** Ads are
+reported and lightly penalised because advertising is normal commercial
+publishing; a miner is not a monetisation choice anyone discloses.
+
+**Unreachable is not unsafe.** A site that will not answer gets *no rating*
+rather than a bad one — the same rule as a failed registry lookup, and the
+same rule the corroboration engine follows.
+
+### Two things it is not
+
+It is **not a malware scanner**. It does not detect exploit kits, phishing, or
+a compromised page; 9/10 means "serves you little junk", not "safe".
+
+It **does not execute JavaScript**, so a site that injects its advertising at
+runtime is undercounted. That is why the presence of a tag manager is itself
+reported, and why the caveat appears on every single result rather than in a
+footnote.
+
 ## Submitting a website for scoring
 
 The **Check a website** box on the Credibility page takes whatever you have —
@@ -226,7 +291,7 @@ not get to obey robots.txt only when convenient.
 
 ### Testing it
 
-`content/tests.py` is 78 tests and **none of them touch the network**:
+`content/tests.py` is 78 tests, and `credibility/tests.py` a further 22 — 100 in all and **none of them touch the network**:
 everything outbound is behind `content.http.request` or a search backend, so
 the tests replace those and drive the whole pipeline on canned data.
 
@@ -248,7 +313,11 @@ backend/          Django project (settings split into base/dev/prod)
   celery.py       Celery app instance
 core/             Source model, DRF router, shared exception handler, tasks
 accounts/         Role groups (Analyst / Reviewer / Admin) as a data migration
-credibility/      CredibilityScore
+credibility/      CredibilityScore, SiteInspection
+  registry.py     RDAP domain registration lookups
+  scoring.py      registration-metadata credibility score
+  inspection.py   fetch a site and rate its safety/clutter out of 10
+  trackers.py     the ad, tracker and miner catalogue, kept readable
 content/          ContentItem, and the fetcher that fills it
   http.py         the only outbound calls: limits, rate limiting, host checks
   robots.py       robots.txt, cached per host, failing closed
@@ -368,6 +437,8 @@ Smoke-test the worker:
 | `POST /api/sources/` | JWT | submit a site by URL or domain; 200 + rescore if already tracked |
 | `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
+| `POST /api/credibility/inspect/` | JWT | inspect a site; returns a 0–10 safety rating and its evidence |
+| `GET /api/credibility/inspections/` | JWT | the log of site inspections, newest first |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
 | `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
 | `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating and its evidence |

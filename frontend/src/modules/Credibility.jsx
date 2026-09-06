@@ -1,9 +1,184 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 
 import { apiFetch } from '../api'
 import Panel from '../components/Panel'
-import { Badge, DataState, ScoreBar } from '../components/common'
+import { Badge, DataState, ScoreBar, TenPointRating } from '../components/common'
 import { useApiList } from '../hooks/useApiList'
+
+const SAFETY_TONE = {
+  safe: 'var(--cyan)',
+  mostly_safe: 'var(--cyan)',
+  some_concerns: 'var(--yellow)',
+  caution: 'var(--magenta)',
+  unsafe: 'var(--magenta)',
+  unknown: 'var(--text-dim)',
+}
+
+function localTime(iso) {
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
+
+/** The log of site safety inspections. Newest first. */
+function SiteSafety({ inspections }) {
+  const [openId, setOpenId] = useState(null)
+
+  return (
+    <Panel title="Site safety" tag="NEWEST FIRST">
+      <div className="notice" style={{ marginBottom: 12 }}>
+        <b>This inspects what the site serves, not whether it is malicious.</b>{' '}
+        Transport security, certificate, response headers, advertising,
+        trackers and clutter. It is not a malware scanner, and it does not run
+        JavaScript — anything injected at runtime is not counted.
+      </div>
+
+      <DataState {...inspections} empty="No sites inspected yet">
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Inspected</th>
+                <th>Domain</th>
+                <th>Safety</th>
+                <th>HTTPS</th>
+                <th>Ads</th>
+                <th>Trackers</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {inspections.rows.map((r) => (
+                <Fragment key={r.id}>
+                  <tr>
+                    <td className="mono-dim" style={{ whiteSpace: 'nowrap' }}>
+                      {localTime(r.created_at)}
+                    </td>
+                    <td>{r.source_domain}</td>
+                    <td style={{ minWidth: 200 }}>
+                      <TenPointRating
+                        score={r.score}
+                        label={r.rating_label}
+                        tone={SAFETY_TONE[r.rating]}
+                        size={18}
+                      />
+                    </td>
+                    <td>
+                      <Badge value={r.uses_https ? 'yes' : 'no'} />
+                    </td>
+                    <td
+                      className="mono-dim"
+                      style={{ color: r.ad_networks > 3 ? 'var(--magenta)' : undefined }}
+                    >
+                      {r.ad_networks}
+                    </td>
+                    <td className="mono-dim">{r.trackers}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => setOpenId(openId === r.id ? null : r.id)}
+                      >
+                        {openId === r.id ? 'Hide' : 'Detail'}
+                      </button>
+                    </td>
+                  </tr>
+                  {openId === r.id && (
+                    <tr>
+                      <td colSpan={7} style={{ background: 'rgba(0,0,0,0.35)' }}>
+                        <div style={{ padding: '4px 0 10px' }}>
+                          <p style={{ fontSize: 12, lineHeight: 1.7 }}>{r.summary}</p>
+
+                          <div className="metric-label" style={{ marginTop: 12 }}>
+                            How the rating was reached
+                          </div>
+                          <div style={{ marginTop: 6 }}>
+                            {r.reasons?.length ? r.reasons.map((reason) => (
+                              <div
+                                key={reason.label}
+                                style={{ display: 'flex', gap: 10, fontSize: 12, marginBottom: 4 }}
+                              >
+                                <span
+                                  className="mono-dim"
+                                  style={{
+                                    minWidth: 48,
+                                    textAlign: 'right',
+                                    color: reason.points < 0 ? 'var(--magenta)' : 'var(--cyan)',
+                                  }}
+                                >
+                                  {reason.points > 0 ? '+' : ''}{reason.points}
+                                </span>
+                                <span>{reason.label}</span>
+                              </div>
+                            )) : <span className="mono-dim">Nothing deducted.</span>}
+                          </div>
+
+                          <ThirdParties findings={r.findings} />
+
+                          <div className="mono-dim" style={{ marginTop: 12 }}>
+                            Checked {r.checked_url || '—'} · {r.engine_version}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </DataState>
+    </Panel>
+  )
+}
+
+/** Exactly which ad networks and trackers were found, named. */
+function ThirdParties({ findings }) {
+  const parties = findings?.third_parties || []
+  const cert = findings?.certificate
+  return (
+    <>
+      {cert?.present && (
+        <>
+          <div className="metric-label" style={{ marginTop: 14 }}>Certificate</div>
+          <div className="mono-dim" style={{ fontSize: 12, marginTop: 4 }}>
+            {cert.valid
+              ? `${cert.issuer || 'issuer unknown'} · ${cert.protocol || ''} · expires in ${cert.days_remaining} days`
+              : `Invalid — ${cert.problem}`}
+          </div>
+        </>
+      )}
+
+      <div className="metric-label" style={{ marginTop: 14 }}>
+        Ads, trackers and other third parties
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+        {parties.length ? parties.map((p) => (
+          <span
+            key={p.domain}
+            className="badge"
+            title={`${p.domain} — seen ${p.count}×`}
+            style={{
+              color: ['miners', 'intrusive_ads'].includes(p.category)
+                ? 'var(--magenta)'
+                : p.category === 'ads' ? 'var(--yellow)' : 'var(--cyan)',
+            }}
+          >
+            {p.name}
+          </span>
+        )) : <span className="mono-dim">None recognised</span>}
+      </div>
+
+      {findings?.inline_trackers?.length > 0 && (
+        <div className="mono-dim" style={{ marginTop: 8, fontSize: 12 }}>
+          Inline: {findings.inline_trackers.join(', ')}
+        </div>
+      )}
+    </>
+  )
+}
 
 // The registry lookup runs on the worker, so a new source appears before its
 // result does. Poll the one row rather than showing a score-shaped blank.
@@ -141,8 +316,31 @@ function AddSource({ onResolved }) {
 export default function Credibility() {
   const scores = useApiList('/api/credibility/?ordering=-created_at')
   const sources = useApiList('/api/sources/')
+  const inspections = useApiList('/api/credibility/inspections/?ordering=-created_at')
   const [busy, setBusy] = useState(null)
+  const [inspecting, setInspecting] = useState(null)
   const [note, setNote] = useState(null)
+
+  async function inspect(sourceId) {
+    setInspecting(sourceId)
+    setNote(null)
+    try {
+      const result = await apiFetch('/api/credibility/inspect/', {
+        method: 'POST',
+        body: JSON.stringify({ source: sourceId }),
+      })
+      await inspections.reload()
+      setNote(
+        result.score === null
+          ? `${result.source_domain}: ${result.rating_label}. ${result.summary}`
+          : `${result.source_domain}: ${result.score.toFixed(1)}/10 — ${result.rating_label}. ${result.summary}`,
+      )
+    } catch (err) {
+      setNote(err.message)
+    } finally {
+      setInspecting(null)
+    }
+  }
 
   const resolved = sources.rows.filter((s) => s.domain_age_days !== null)
   const unresolved = sources.rows.filter((s) => s.domain_age_days === null)
@@ -183,6 +381,27 @@ export default function Credibility() {
           </div>
           <div className="metric-label">Scored high or verified</div>
         </Panel>
+        <Panel title="Latest inspection" tag="SITE SAFETY">
+          {inspections.rows.length ? (
+            <>
+              <TenPointRating
+                score={inspections.rows[0].score}
+                label={inspections.rows[0].rating_label}
+                tone={SAFETY_TONE[inspections.rows[0].rating]}
+              />
+              <div className="metric-label" style={{ marginTop: 12 }}>
+                {inspections.rows[0].source_domain} ·{' '}
+                {inspections.rows[0].ad_networks} ad network(s),{' '}
+                {inspections.rows[0].trackers} tracker(s)
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="metric">—</div>
+              <div className="metric-label">No site inspected yet</div>
+            </>
+          )}
+        </Panel>
         <Panel title="Registry coverage" tag="RDAP">
           <div className="metric" style={{ color: resolved.length ? 'var(--cyan)' : 'var(--text-dim)' }}>
             {resolved.length}
@@ -202,6 +421,10 @@ export default function Credibility() {
       <AddSource
         onResolved={() => { scores.reload(); sources.reload() }}
       />
+
+      <div style={{ height: 16 }} />
+
+      <SiteSafety inspections={inspections} />
 
       <div style={{ height: 16 }} />
 
@@ -226,6 +449,7 @@ export default function Credibility() {
                   <th>Registry</th>
                   <th>Latest score</th>
                   <th>Active</th>
+                  <th />
                   <th />
                 </tr>
               </thead>
@@ -252,6 +476,17 @@ export default function Credibility() {
                         onClick={() => rescore(s.id)}
                       >
                         {busy === s.id ? 'Scoring…' : 'Rescore'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={inspecting === s.id}
+                        onClick={() => inspect(s.id)}
+                        title="Fetch the homepage and rate how safe and cluttered it is"
+                      >
+                        {inspecting === s.id ? 'Inspecting…' : 'Inspect site'}
                       </button>
                     </td>
                   </tr>

@@ -3,9 +3,13 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import CredibilityScore
-from .serializers import CredibilityScoreSerializer, ScoreRequestSerializer
-from .tasks import refresh_domain_registration, score_source
+from .models import CredibilityScore, SiteInspection
+from .serializers import (
+    CredibilityScoreSerializer,
+    ScoreRequestSerializer,
+    SiteInspectionSerializer,
+)
+from .tasks import inspect_site, refresh_domain_registration, score_source
 
 
 class CredibilityScoreViewSet(viewsets.ReadOnlyModelViewSet):
@@ -19,6 +23,35 @@ class CredibilityScoreViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CredibilityScoreSerializer
     search_fields = ('source__domain', 'provenance_hash')
     ordering_fields = ('credibility_score', 'created_at')
+
+
+class SiteInspectionViewSet(viewsets.ReadOnlyModelViewSet):
+    """The log of site safety inspections, newest first."""
+
+    queryset = SiteInspection.objects.select_related('source')
+    serializer_class = SiteInspectionSerializer
+    search_fields = ('source__domain', 'rating')
+    ordering_fields = ('created_at', 'score')
+
+
+@api_view(['POST'])
+def trigger_inspection(request):
+    """POST /api/credibility/inspect/ — look inside a site and rate it.
+
+    Runs inline: it fetches the homepage and opens a TLS connection, so a few
+    seconds is normal, and the caller is waiting for a rating rather than a
+    task id.
+    """
+    serializer = ScoreRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    source = serializer.validated_data['source']
+
+    inspection_id = inspect_site.run(source.pk)
+    inspection = SiteInspection.objects.get(pk=inspection_id)
+    return Response(
+        SiteInspectionSerializer(inspection).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(['POST'])

@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react'
 
 import { apiFetch } from '../api'
 import Panel from '../components/Panel'
-import { Badge, DataState } from '../components/common'
+import { Badge, DataState, TenPointRating } from '../components/common'
 import { useApiList } from '../hooks/useApiList'
 
 // Colour ramp for the 0-10 rating. Deliberately not a red/green traffic
@@ -17,23 +17,15 @@ const VERDICT_TONE = {
   unavailable: 'var(--text-dim)',
 }
 
-/** The rating out of 10, with its tag. */
+/** The corroboration rating out of 10, with its tag. */
 function Rating({ report, size = 22 }) {
-  const tone = VERDICT_TONE[report.verdict] || 'var(--text)'
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ fontSize: size, fontWeight: 700, color: tone, lineHeight: 1 }}>
-        {report.score === null || report.score === undefined
-          ? '—'
-          : `${report.score.toFixed(1)}`}
-        {report.score !== null && report.score !== undefined && (
-          <span style={{ fontSize: size * 0.5, color: 'var(--text-dim)' }}>/10</span>
-        )}
-      </span>
-      <span className="badge" style={{ color: tone, borderColor: tone }}>
-        {report.verdict_label}
-      </span>
-    </span>
+    <TenPointRating
+      score={report.score}
+      label={report.verdict_label}
+      tone={VERDICT_TONE[report.verdict] || 'var(--text)'}
+      size={size}
+    />
   )
 }
 

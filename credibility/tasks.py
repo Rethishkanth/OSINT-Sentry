@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from core.models import Source
 
-from .models import CredibilityScore
+from .models import CredibilityScore, SiteInspection
 from .registry import RegistryStatus, get_registry_client
 from .scoring import extract_features, get_scorer
 
@@ -108,3 +108,44 @@ def rescore_all_sources():
             score_source.si(source_id),
         ).delay()
     return len(ids)
+
+
+@shared_task
+def inspect_site(source_id):
+    """Look inside a site and rate how safe and how cluttered it is.
+
+    Separate from scoring on purpose. `score_source` reads cached registration
+    metadata and makes no network call; this one fetches the homepage, opens a
+    TLS connection, and reads the markup. Keeping them apart means a slow or
+    unreachable site never delays a credibility score, and the two ratings
+    stay legible as answers to two different questions.
+    """
+    from .inspection import findings_as_dict, inspect
+
+    try:
+        source = Source.objects.get(pk=source_id)
+    except ObjectDoesNotExist:
+        logger.warning('inspect_site: Source %s is gone', source_id)
+        return None
+
+    result = inspect(source.domain)
+    counts = result.findings.counts()
+
+    inspection = SiteInspection.objects.create(
+        source=source,
+        score=result.score,
+        rating=result.rating,
+        summary=result.summary,
+        reasons=result.reasons,
+        findings=findings_as_dict(result.findings),
+        checked_url=result.findings.checked_url[:1000],
+        ad_networks=counts.get('ads', 0) + counts.get('intrusive_ads', 0),
+        trackers=counts.get('trackers', 0),
+        uses_https=result.findings.https,
+        engine_version=result.engine_version,
+    )
+    logger.info(
+        'Inspected %s: %s (%s)', source.domain, result.headline,
+        f'{result.score}/10' if result.score is not None else 'no rating',
+    )
+    return inspection.pk
