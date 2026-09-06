@@ -9,13 +9,14 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # backend/settings/base.py -> backend/settings -> backend -> project root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    USE_GIS=(bool, True),
+    USE_GIS=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / '.env')
@@ -26,10 +27,10 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
-# GeoDjango needs GDAL/GEOS present on the machine. Turning this off drops the
-# spatial backend and the reportgis app so the rest of the stack still runs
-# before those libraries are installed. Dev escape hatch only — a database
-# migrated with USE_GIS off is missing reportgis' tables.
+# GeoDjango needs GDAL/GEOS installed on the machine, and a spatial database
+# behind it. Off by default so the project runs on nothing but Python: it drops
+# the spatial backend and the reportgis app. A database migrated with USE_GIS
+# off has no reportgis tables — turning it on later needs a fresh migrate.
 USE_GIS = env('USE_GIS')
 
 
@@ -50,6 +51,7 @@ if USE_GIS:
 THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
+    'django_celery_results',
 ]
 
 LOCAL_APPS = [
@@ -100,20 +102,40 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': (
-            'django.contrib.gis.db.backends.postgis'
-            if USE_GIS
-            else 'django.db.backends.postgresql'
-        ),
-        'NAME': env('DB_NAME', default='osint_sentry'),
-        'USER': env('DB_USER', default='postgres'),
-        'PASSWORD': env('DB_PASSWORD', default=''),
-        'HOST': env('DB_HOST', default='localhost'),
-        'PORT': env('DB_PORT', default='5432'),
+# 'sqlite' needs nothing installed and is the default for local work.
+# 'postgres' is the deployment target; switch with DB_BACKEND in .env.
+DB_BACKEND = env('DB_BACKEND', default='sqlite')
+
+if DB_BACKEND == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': (
+                'django.contrib.gis.db.backends.spatialite'
+                if USE_GIS
+                else 'django.db.backends.sqlite3'
+            ),
+            'NAME': env('DB_NAME', default=str(BASE_DIR / 'db.sqlite3')),
+        }
     }
-}
+elif DB_BACKEND == 'postgres':
+    DATABASES = {
+        'default': {
+            'ENGINE': (
+                'django.contrib.gis.db.backends.postgis'
+                if USE_GIS
+                else 'django.db.backends.postgresql'
+            ),
+            'NAME': env('DB_NAME', default='osint_sentry'),
+            'USER': env('DB_USER', default='postgres'),
+            'PASSWORD': env('DB_PASSWORD', default=''),
+            'HOST': env('DB_HOST', default='localhost'),
+            'PORT': env('DB_PORT', default='5432'),
+        }
+    }
+else:
+    raise ImproperlyConfigured(
+        f"DB_BACKEND must be 'sqlite' or 'postgres', got {DB_BACKEND!r}"
+    )
 
 
 # Password validation
@@ -190,8 +212,26 @@ SIMPLE_JWT = {
 
 # Celery
 
-CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+# Default to kombu's filesystem transport: a real broker with a real worker
+# process, but backed by directories instead of a Redis server. Point
+# CELERY_BROKER_URL at redis:// once a broker is available.
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='filesystem://')
+
+if CELERY_BROKER_URL.startswith('filesystem://'):
+    _broker_dir = BASE_DIR / '.celery-broker'
+    for _sub in ('queue', 'processed'):
+        (_broker_dir / _sub).mkdir(parents=True, exist_ok=True)
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        'data_folder_in': str(_broker_dir / 'queue'),
+        'data_folder_out': str(_broker_dir / 'queue'),
+        'processed_folder': str(_broker_dir / 'processed'),
+        'store_processed': True,
+    }
+
+# Results go to the database via django-celery-results, so no result store has
+# to be running either. Celery's own file:// backend cannot parse a Windows
+# drive letter, so it is not an option here.
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='django-db')
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']

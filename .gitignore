@@ -8,3 +8,4 @@ dist/
 staticfiles/
 mediafiles/
 *.log
+.celery-broker/

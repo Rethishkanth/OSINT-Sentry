@@ -9,6 +9,7 @@ click-repl==0.3.0
 Django==5.2.17
 django-environ==0.14.0
 django-filter==26.1
+django_celery_results==2.6.0
 djangorestframework==3.18.0
 djangorestframework-gis==1.3.0
 djangorestframework_simplejwt==5.5.1
@@ -18,6 +19,7 @@ prompt_toolkit==3.0.53
 psycopg2-binary==2.9.12
 PyJWT==2.13.0
 python-dateutil==2.9.0.post0
+pywin32==312
 redis==8.1.0
 six==1.17.0
 sqlparse==0.6.0
