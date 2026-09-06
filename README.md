@@ -248,27 +248,95 @@ same switch `NullRegistryClient` gives Module 1.
 Reading a page is only half the question. The other half is *does anyone else
 say this*. Every stored article can be checked against other outlets, which
 produces a rating out of 10 and a tag — TRUSTWORTHY, LIKELY RELIABLE,
-PARTIALLY CORROBORATED, UNCORROBORATED, DO NOT TRUST — logged newest-first in
-the console. Reading a page runs the check automatically.
+PARTIALLY CORROBORATED, UNCORROBORATED, DISPUTED BY OTHERS, DO NOT TRUST —
+logged newest-first in the console. Reading a page runs the check
+automatically.
 
 **This measures corroboration, not truth.** It asks whether independent
-outlets carried the same story. A widely repeated falsehood corroborates
-beautifully; a genuine scoop does not corroborate at all until everyone
-catches up. The tag is a summary of that measurement and is not a fact-check,
-so every report stores the keywords it searched, the outlets it found, their
-similarity, and the arithmetic that produced the number.
+outlets carried the same story, and whether the specifics this article states
+match what they printed. A widely repeated falsehood corroborates beautifully;
+a genuine scoop does not corroborate at all until everyone catches up. The tag
+is a summary of that measurement and is not a fact-check, so every report
+stores the keywords it searched, the outlets it found, their similarity, the
+figures it compared, and the arithmetic that produced the number.
 
-Keywords come from the article's own entities and topics — an entity that also
-appears in the headline outranks one buried in paragraph forty, because proper
-nouns are what make a story findable. A Mumbai flooding report searches
-`Mumbai, floods, rail`; the query is capped at four terms because search
-backends AND them, and a long query returns nothing rather than something
-imperfect.
+The rating is a weighted sum of three things, each returned as its own reason
+with its signed contribution, so the console can show a column that visibly
+adds up to the score:
 
-Three backends run together: what we have already ingested, the **live feeds of
-other tracked outlets** (through the same robots-respecting fetcher), and
-**GDELT's DOC 2.0 API** — a free, key-less index of global news, chosen for the
-same reason Module 1 uses RDAP.
+| Component | Weight | What it measures |
+| --- | --- | --- |
+| Who published it | 0.30 | the source's Module 1 credibility |
+| Who else reported it | 0.45 | independent outlets carrying a matching story |
+| Do its details match | 0.25 | the article's own figures, found in their text |
+
+When an article states nothing checkable, the third share passes to the second
+rather than being lost — otherwise a story with no numbers in it could not
+score above 7.5 however many outlets confirmed it. A conflicting figure costs
+1.5, capped at 3.0, so one contested number cannot drive a story to zero.
+
+### Where it looks
+
+Four backends run together: what we have already ingested, the **live feeds of
+other tracked outlets**, a standing **panel of major newsrooms** in
+`content/reference_outlets.py` — consulted whether or not anyone registered
+them as sources — and **GDELT's DOC 2.0 API**, a free, key-less index of
+global news chosen for the same reason Module 1 uses RDAP.
+
+The reference panel exists because without it a fresh install can only
+cross-reference against the one or two feeds someone has added, and reports
+every story as uncorroborated: truthfully, but having looked nowhere. Nothing
+on that list is treated as authoritative — an outlet we do not track is scored
+at neutral credibility like any other unknown domain, so being on it buys a
+match nothing beyond being looked at.
+
+The best few candidates are then **fetched and parsed in full**, through the
+same robots-respecting, rate-limited fetcher as everything else, and matched on
+their actual text rather than a nine-word headline. `CORROBORATION_DEEP_READS`
+(default 5) sets how many; it is the main thing an analyst waits for.
+
+### Checking what the article actually says
+
+`content/claims.py` pulls the article's checkable specifics — figures, sums,
+percentages, dates — and looks for those same specifics in the text of the
+outlets that were read. Each one comes back `agreed`, `disputed`, or
+`unverified`, never `true` or `false`: every outlet copying one wrong figure
+off one wire report agrees perfectly, and a disputed figure may be a correction
+rather than an error.
+
+A false dispute is worse than a missed one, because it accuses a correct
+article of getting a fact wrong. So a conflict is only reported when the other
+outlet is demonstrably discussing the same quantity: two or more of the claim's
+context words present, the rival figure within a short span of them, the same
+kind of quantity (money is never compared against percentages), the same
+magnitude, and the same counted noun — 47 *people* is only ever contradicted by
+another count of people. Every one of those guards is there because its absence
+produced a wrong answer on a live article.
+
+### Why every article used to score 3.1
+
+Worth recording, because the arithmetic was never the problem. Almost every
+article came back rated 3.1/10 — which is exactly `0.45 × (68 ÷ 10)`, the
+source-credibility half of the old formula with corroboration contributing
+precisely zero, on story after story.
+
+The cause was the query. Search terms were ranked by how often each proper noun
+appeared *anywhere on the fetched page*, so navigation menus and sidebar promos
+outvoted the story. An article headlined "RBI intervention, dollar flows push
+Indian rupee to two-month peak" was searched for as **`Indian, Budget, share,
+price`** — not one word of which is in the headline — and the 139 unrelated
+articles that came back were then correctly rejected, one at a time, down to
+zero.
+
+Terms are now ranked by *where* a word appears rather than how often, because
+position is the signal that survives scraping: page furniture repeats endlessly
+and sits everywhere, while a story's subject is in its headline. A term the
+site prints on every article it publishes is recognised as furniture and
+discounted, weekdays and months are discarded outright, and how often the
+article returns to a headline word separates the subject from the sub-editor —
+"floods" recurs throughout a flooding story, "spotlights" appears once. The same
+article now searches `Indian, RBI, intervention`, and the Ukraine story that
+scored 3.1 scores 9.0 on eight independent outlets.
 
 ### The three rules that keep it honest
 
@@ -295,7 +363,10 @@ rehabilitated by a handful of keyword matches.
 Similarity is measured against the article's five strongest terms rather than
 all of them: most candidates are known only by their headline, and a headline
 cannot carry a dozen terms. Dividing by all of them scored genuinely matching
-coverage at 25% and discarded it.
+coverage at 25% and discarded it. Once a candidate has been read in full its
+body is matched too, which is both fairer and stricter — an outlet sharing one
+headline word but never mentioning the subject stops scoring, and one covering
+the story properly under a cryptic headline starts.
 
 Set `CORROBORATION_SEARCH=content.corroborate.NullSearch` to disable it. That
 backend reports itself *unavailable* rather than empty, so switching it off
@@ -307,7 +378,7 @@ not get to obey robots.txt only when convenient.
 
 ### Testing it
 
-`content/tests.py` is 78 tests, and `credibility/tests.py` a further 22 — 100 in all and **none of them touch the network**:
+`content/tests.py` is 102 tests, and `credibility/tests.py` a further 27 — 129 in all and **none of them touch the network**:
 everything outbound is behind `content.http.request` or a search backend, so
 the tests replace those and drive the whole pipeline on canned data.
 
@@ -320,6 +391,12 @@ a redirect pointing at `127.0.0.1`, a feed declaring a DOCTYPE, an oversized
 body, a page that is mostly navigation, a low-scoring source proving it is
 never contacted, a partial search refusing to condemn, eight syndicated copies
 counting once, and a year-old story failing to corroborate a new one.
+
+They also pin the corroboration bugs that only showed up against live sites: a
+navigation bar outvoting a headline, a clock time (`03:12`) surfacing as two
+disputed statistics, a year being compared against a death toll, a publication
+timestamp treated as a claim, and a line break making a story about 47 *people*
+record itself as counting 47 *officials*.
 
 ## Layout
 
@@ -341,7 +418,9 @@ content/          ContentItem, and the fetcher that fills it
   feeds.py        RSS/Atom
   fetchers.py     feed-first WebFetcher; NullFetcher is the offline switch
   pipeline.py     NER / topics / summary (heuristic stand-in)
-  corroborate.py  keyword search across other outlets -> a 0-10 rating
+  corroborate.py  search + deep-read other outlets -> a 0-10 rating
+  claims.py       the article's own figures, checked against their text
+  reference_outlets.py  newsrooms consulted whether or not they are Sources
 social/           SocialAccount, InteractionEdge
 media/            MediaItem, TamperingResult
 reportgis/        GeoEvent (PostGIS PointField), Report — needs GDAL/GEOS

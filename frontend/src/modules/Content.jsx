@@ -13,8 +13,74 @@ const VERDICT_TONE = {
   likely_reliable: 'var(--cyan)',
   partially_corroborated: 'var(--yellow)',
   uncorroborated: 'var(--yellow)',
+  disputed: 'var(--magenta)',
   do_not_trust: 'var(--magenta)',
   unavailable: 'var(--text-dim)',
+}
+
+const CLAIM_TONE = {
+  agreed: 'var(--cyan)',
+  disputed: 'var(--magenta)',
+  unverified: 'var(--text-dim)',
+}
+
+/** One line of the score's working, with what it contributed out of 10. */
+function ReasonRow({ reason }) {
+  const { label, detail, effect } = reason
+  const tone = effect == null
+    ? 'var(--text-dim)'
+    : effect < 0 ? 'var(--magenta)' : effect > 0 ? 'var(--cyan)' : 'var(--yellow)'
+
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 8 }}>
+      {/* Fixed-width so the contributions line up as a column that visibly
+          sums to the rating, rather than as prose with numbers in it. */}
+      <span
+        className="mono-dim"
+        style={{ minWidth: 52, textAlign: 'right', color: tone, fontVariantNumeric: 'tabular-nums' }}
+      >
+        {effect == null ? '—' : `${effect > 0 ? '+' : ''}${effect.toFixed(2)}`}
+      </span>
+      <span style={{ fontSize: 12, lineHeight: 1.6 }}>
+        <b style={{ color: 'var(--text)' }}>{label}.</b>{' '}
+        <span style={{ color: 'var(--text-dim)' }}>{detail}</span>
+      </span>
+    </div>
+  )
+}
+
+/** The article's own checkable specifics, and how they fared. */
+function ClaimTable({ claims }) {
+  return (
+    <div className="table-wrap" style={{ marginTop: 6 }}>
+      <table>
+        <thead>
+          <tr>
+            <th>Article states</th>
+            <th>Kind</th>
+            <th>Result</th>
+            <th>In context</th>
+          </tr>
+        </thead>
+        <tbody>
+          {claims.map((c, index) => (
+            <tr key={`${c.kind}-${c.value}-${index}`}>
+              <td style={{ whiteSpace: 'nowrap' }}>{c.display}</td>
+              <td className="mono-dim">{c.kind_label}</td>
+              <td style={{ color: CLAIM_TONE[c.status], minWidth: 190 }}>
+                {c.status === 'agreed' && `Matched by ${c.agreed_by.join(', ')}`}
+                {c.status === 'disputed' && c.disputed_by.map(([domain, theirs]) => (
+                  <div key={domain}>{domain} says {theirs}</div>
+                ))}
+                {c.status === 'unverified' && 'Not found in the coverage read'}
+              </td>
+              <td style={{ maxWidth: 380, fontSize: 11, color: 'var(--text-dim)' }}>{c.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 /** The corroboration rating out of 10, with its tag. */
@@ -44,9 +110,13 @@ function CredibilityChecks({ reports }) {
   return (
     <Panel title="Credibility checks" tag="NEWEST FIRST">
       <div className="notice" style={{ marginBottom: 12 }}>
-        <b>This rates corroboration, not truth.</b> It asks whether independent
-        outlets carried the same story, using keywords pulled from the article.
-        A widely repeated falsehood corroborates well; a genuine scoop does not.
+        <b>This rates corroboration, not truth.</b> Each check searches a panel of
+        major newsrooms — registered here or not — plus GDELT&apos;s global index,
+        then <b>reads the closest matches in full</b> and compares the figures,
+        sums and dates this article states against what they printed. A widely
+        repeated falsehood still corroborates well; a genuine scoop still does not.
+        Open <b>Why</b> on any row to see every part of the score and what it
+        contributed.
       </div>
 
       <DataState {...reports} empty="Nothing checked yet">
@@ -59,6 +129,7 @@ function CredibilityChecks({ reports }) {
                 <th>Source</th>
                 <th>Rating</th>
                 <th>Corroborating</th>
+                <th>Details checked</th>
                 <th />
               </tr>
             </thead>
@@ -73,7 +144,24 @@ function CredibilityChecks({ reports }) {
                     <td className="mono-dim">{r.source_domain}</td>
                     <td style={{ minWidth: 210 }}><Rating report={r} size={18} /></td>
                     <td className="mono-dim">
-                      {r.verdict === 'unavailable' ? '—' : `${r.independent_sources} outlet(s)`}
+                      {r.verdict === 'unavailable'
+                        ? '—'
+                        : `${r.independent_sources} outlet(s), ${r.outlets_read ?? 0} read`}
+                    </td>
+                    <td className="mono-dim">
+                      {r.claims_checked
+                        ? (
+                          <>
+                            <span style={{ color: CLAIM_TONE.agreed }}>{r.claims_agreed}</span>
+                            {' / '}{r.claims_checked}
+                            {r.claims_disputed > 0 && (
+                              <span style={{ color: CLAIM_TONE.disputed }}>
+                                {' '}({r.claims_disputed} conflict)
+                              </span>
+                            )}
+                          </>
+                        )
+                        : '—'}
                     </td>
                     <td>
                       <button
@@ -87,7 +175,7 @@ function CredibilityChecks({ reports }) {
                   </tr>
                   {openId === r.id && (
                     <tr>
-                      <td colSpan={6} style={{ background: 'rgba(0,0,0,0.35)' }}>
+                      <td colSpan={7} style={{ background: 'rgba(0,0,0,0.35)' }}>
                         <div style={{ padding: '4px 0 10px' }}>
                           <div className="metric-label">Keywords searched</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0 14px' }}>
@@ -98,8 +186,32 @@ function CredibilityChecks({ reports }) {
                               : <span className="mono-dim">none usable</span>}
                           </div>
 
-                          <div className="metric-label">Reasoning</div>
-                          <p style={{ fontSize: 12, lineHeight: 1.7, marginTop: 6 }}>{r.rationale}</p>
+                          <div className="metric-label">
+                            Why this rating{r.score != null && ` — the parts add up to ${r.score.toFixed(1)}`}
+                          </div>
+                          <div style={{ margin: '10px 0 4px' }}>
+                            {r.reasons?.length
+                              ? r.reasons.map((reason, index) => (
+                                <ReasonRow key={`${reason.label}-${index}`} reason={reason} />
+                              ))
+                              // Reports written by the v1 engine have no
+                              // structured reasons, only the prose. Showing
+                              // that is better than showing an empty box.
+                              : <p style={{ fontSize: 12, lineHeight: 1.7 }}>{r.rationale}</p>}
+                          </div>
+
+                          {r.claims?.length > 0 && (
+                            <>
+                              <div className="metric-label" style={{ marginTop: 14 }}>
+                                Details checked against the other coverage
+                              </div>
+                              <div className="mono-dim" style={{ marginTop: 4, fontSize: 11 }}>
+                                Whether other outlets printed the same figures — not a ruling on
+                                which is right. A correction looks exactly like an error from outside.
+                              </div>
+                              <ClaimTable claims={r.claims} />
+                            </>
+                          )}
 
                           {r.matches?.length > 0 && (
                             <>
@@ -171,7 +283,13 @@ function Fetcher({ sources, onDone }) {
         ? (report.score === null || report.score === undefined
           ? ` ${report.verdict_label} — ${report.rationale}`
           : ` Rated ${report.score.toFixed(1)}/10 — ${report.verdict_label},`
-            + ` corroborated by ${report.independent_sources} other outlet(s).`)
+            + ` corroborated by ${report.independent_sources} other outlet(s)`
+            + ` (${report.outlets_read ?? 0} read in full)`
+            + (report.claims_checked
+              ? `, ${report.claims_agreed}/${report.claims_checked} stated details matched`
+                + (report.claims_disputed ? `, ${report.claims_disputed} conflicting` : '')
+              : '')
+            + '.')
         : ''
       setState({ phase: 'done', message: `${result.detail || 'Done.'}${verdict}` })
       return result

@@ -107,6 +107,7 @@ class Corroboration(TimeStampedModel):
         LIKELY_RELIABLE = 'likely_reliable', 'Likely reliable'
         PARTIALLY_CORROBORATED = 'partially_corroborated', 'Partially corroborated'
         UNCORROBORATED = 'uncorroborated', 'Uncorroborated'
+        DISPUTED = 'disputed', 'Disputed by others'
         DO_NOT_TRUST = 'do_not_trust', 'Do not trust'
         UNAVAILABLE = 'unavailable', 'Could not check'
 
@@ -127,9 +128,28 @@ class Corroboration(TimeStampedModel):
     )
     keywords = models.JSONField(default=list, blank=True)
     rationale = models.TextField(blank=True)
+    # The score's working, one entry per component: {label, detail, effect},
+    # where effect is that component's signed contribution out of 10. Stored
+    # structured rather than as prose so a rating can be audited — and so a
+    # later engine version's reasoning can be compared against this one's.
+    reasons = models.JSONField(default=list, blank=True)
     searched = models.CharField(max_length=255, blank=True)
     sources_checked = models.PositiveIntegerField(default=0)
     independent_sources = models.PositiveIntegerField(default=0)
+    # Other outlets' articles fetched and parsed in full, rather than judged
+    # from a headline. Claims can only be checked against these.
+    outlets_read = models.PositiveIntegerField(default=0)
+
+    # Checkable specifics the article states — figures, sums, dates — and how
+    # they compared with what the outlets we read printed. See content.claims.
+    claims = models.JSONField(default=list, blank=True)
+    claims_checked = models.PositiveIntegerField(default=0)
+    claims_agreed = models.PositiveIntegerField(default=0)
+    claims_disputed = models.PositiveIntegerField(
+        default=0,
+        help_text='Details another outlet stated differently. Not a ruling on '
+                  'which one is right.',
+    )
     engine_version = models.CharField(max_length=64, blank=True)
 
     class Meta:

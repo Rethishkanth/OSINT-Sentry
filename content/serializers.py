@@ -32,8 +32,9 @@ class CorroborationSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'content_item', 'content_title', 'content_url', 'source_domain',
             'score', 'verdict', 'verdict_label', 'keywords', 'rationale',
-            'searched', 'sources_checked', 'independent_sources',
-            'engine_version', 'matches', 'created_at',
+            'reasons', 'searched', 'sources_checked', 'independent_sources',
+            'outlets_read', 'claims', 'claims_checked', 'claims_agreed',
+            'claims_disputed', 'engine_version', 'matches', 'created_at',
         )
 
 

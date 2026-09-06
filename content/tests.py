@@ -882,3 +882,398 @@ class FetchUrlTests(TestCase):
 
         self.assertIn('error', fetch_url.run('mailto:someone@example.com'))
         self.assertFalse(Source.objects.exists())
+
+
+# ---------------------------------------------------------------------------
+# Corroboration v2: query building, deep reads, and claim checking
+# ---------------------------------------------------------------------------
+
+# A page as it actually arrives from a scraper: the story, wrapped in the
+# navigation and promo text that appears on every article the site publishes.
+# The chrome is repeated because that is what chrome does, and repetition is
+# exactly what fooled the v1 term ranker.
+CHROME = (
+    'Budget 2026 Share Price Market News Advertisement Subscribe Newsletter '
+) * 12
+RUPEE_STORY = (
+    'The Indian rupee strengthened past 88 against the dollar on Tuesday. '
+    'RBI intervention and steady dollar flows lifted the rupee to a two-month '
+    'peak. Traders said the RBI sold dollars through state-run banks as the '
+    'rupee gained. '
+) * 3
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None, CORROBORATION_DEEP_READS=0)
+class QueryBuildingTests(TestCase):
+    """The regression that mattered: v1 searched for the page furniture.
+
+    Every article came back rated 3.1 — the source-credibility half of the
+    formula with corroboration contributing zero — because the query was built
+    from whatever proper noun appeared most often anywhere on the page.
+    """
+
+    def setUp(self):
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=68.0, trust_tier=TrustTier.HIGH
+        )
+
+    def _item(self, title, body, url='https://examplenews.com/a'):
+        item = ContentItem.objects.create(
+            source=self.source, url=url, title=title, body=body,
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(item.pk)
+        item.refresh_from_db()
+        return item
+
+    def test_the_headline_beats_the_navigation_bar(self):
+        item = self._item(
+            'RBI intervention, dollar flows push Indian rupee to two-month peak',
+            CHROME + RUPEE_STORY + CHROME,
+        )
+        keywords = [k.lower() for k in corroborate.query_terms(corroborate.terms_for(item))]
+
+        # v1 produced ['Indian', 'Budget', 'share', 'price'] here.
+        self.assertIn('rbi', keywords)
+        for chrome_word in ('budget', 'share', 'price', 'advertisement'):
+            self.assertNotIn(chrome_word, keywords, f'{chrome_word} is furniture, not the story')
+
+    def test_a_term_on_every_page_of_a_site_is_discounted(self):
+        # Three articles from one source, all carrying the same promo. The
+        # promo is the site; it is not any of the stories.
+        for index in range(3):
+            self._item(
+                f'Story number {index} about penguins',
+                CHROME + f'Antarctic penguins were counted again in survey {index}. ',
+                url=f'https://examplenews.com/penguins-{index}',
+            )
+        latest = ContentItem.objects.order_by('-created_at').first()
+
+        boilerplate = corroborate._boilerplate_terms(latest)
+        self.assertTrue(boilerplate, 'repeated chrome should be detected')
+
+        weights = {t.text.lower(): t.weight for t in corroborate.terms_for(latest)}
+        self.assertLess(weights.get('advertisement', 0.0), weights.get('penguins', 0.0))
+
+    def test_a_weekday_is_never_a_search_term(self):
+        # Every story filed on a Tuesday says Tuesday, and none is about it.
+        item = self._item('Rupee gains on Tuesday', RUPEE_STORY)
+        keywords = [k.lower() for k in corroborate.query_terms(corroborate.terms_for(item))]
+        self.assertNotIn('tuesday', keywords)
+
+    def test_the_query_stays_short_enough_to_return_something(self):
+        # Backends AND their terms, so each extra one narrows the search
+        # towards nothing.
+        item = self._item(
+            'RBI intervention, dollar flows push Indian rupee to two-month peak',
+            RUPEE_STORY,
+        )
+        self.assertLessEqual(len(corroborate.query_terms(corroborate.terms_for(item))), 3)
+
+
+class FakeArticle:
+    """The two attributes claim extraction reads off a ContentItem."""
+
+    summary = ''
+
+    def __init__(self, title, body):
+        self.title, self.body = title, body
+
+
+class ClaimExtractionTests(SimpleTestCase):
+    """What the article actually asserts, as opposed to what it is about."""
+
+    def _claims(self, title, body):
+        from . import claims
+        return claims.extract_claims(FakeArticle(title, body))
+
+    def test_a_counted_figure_is_a_claim(self):
+        found = self._claims(
+            'Flood toll rises',
+            'Officials said 47 people died in the Mumbai floods on the weekend.',
+        )
+        self.assertIn('47', [c.value for c in found])
+
+    def test_money_and_percentages_are_kept_apart(self):
+        from . import claims
+        found = self._claims(
+            'Damage assessed',
+            'Damage was put at 1,200 crore rupees, up 15% on the previous total.',
+        )
+        kinds = {c.kind for c in found}
+        self.assertIn(claims.MONEY, kinds)
+        self.assertIn(claims.PERCENT, kinds)
+        # "15" as a percentage must never be checked against "15" as a sum.
+        self.assertNotEqual(
+            {c.value for c in found if c.kind == claims.MONEY},
+            {c.value for c in found if c.kind == claims.PERCENT},
+        )
+
+    def test_a_year_is_not_a_statistic(self):
+        # A live check reported "this article says 03, the Guardian says 2022"
+        # as a factual conflict. Years match almost any figure they are
+        # compared against, so they are never treated as quantities.
+        from . import claims
+        found = self._claims(
+            'Case reopened',
+            'The Anderson case was reopened in 2022 after new evidence emerged.',
+        )
+        self.assertNotIn('2022', [c.value for c in found if c.kind == claims.QUANTITY])
+
+    def test_a_loose_number_with_nothing_to_count_is_not_a_claim(self):
+        found = self._claims(
+            'Actor on her childhood',
+            'The first half of my 20s was hell, she said of that period.',
+        )
+        self.assertEqual([], [c.value for c in found])
+
+    def test_the_articles_own_timestamp_is_not_a_claim(self):
+        # Checking a publication date against other outlets measures nothing:
+        # everything filed today says today.
+        found = self._claims(
+            'Envoys set for talks',
+            'Published 6 September 2026. Updated 6 September 2026. Talks continue.',
+        )
+        self.assertEqual([], found)
+
+    def test_a_clock_time_does_not_become_a_disputed_figure(self):
+        # "03" normalises to 3 and is discarded; without that it survived as a
+        # two-digit statistic with nothing to count.
+        from . import claims
+        found = self._claims('Timeline', 'The meeting began at 03:12 local time.')
+        self.assertEqual([], [c.value for c in found if c.kind == claims.QUANTITY])
+
+
+class ClaimVerificationTests(SimpleTestCase):
+    """Does what this article states match what other outlets state?"""
+
+    TITLE = 'Flood toll rises to 47 in Mumbai as damage hits 1,200 crore'
+    BODY = (
+        'Officials said 47 people died in the Mumbai floods. Damage was put at '
+        '1,200 crore rupees. The rainfall reached 32.5 cm overnight, up 15% on '
+        'the previous total.'
+    )
+
+    def _verified(self, evidence):
+        from . import claims
+        found = claims.extract_claims(FakeArticle(self.TITLE, self.BODY))
+        claims.verify_claims(found, evidence)
+        return {c.value: c for c in found}
+
+    def test_a_matching_figure_is_recorded_as_agreement(self):
+        from . import claims
+        found = self._verified([(
+            'reuters.example',
+            'Damage in Mumbai was 1,200 crore rupees, officials said. Rainfall hit 32.5 cm.',
+        )])
+        self.assertEqual(claims.AGREED, found['1200 crore'].status)
+        self.assertIn('reuters.example', found['1200 crore'].agreed_by)
+
+    def test_a_different_figure_is_recorded_as_a_conflict(self):
+        from . import claims
+        found = self._verified([(
+            'reuters.example',
+            '42 people died in the Mumbai floods, officials said on Sunday.',
+        )])
+        self.assertEqual(claims.DISPUTED, found['47'].status)
+        self.assertEqual([['reuters.example', '42']], found['47'].disputed_by)
+
+    def test_silence_is_not_a_conflict(self):
+        # An outlet that simply did not print a figure has not contradicted it.
+        from . import claims
+        found = self._verified([(
+            'reuters.example', 'Flooding continued across Mumbai for a third day.',
+        )])
+        self.assertEqual(claims.UNVERIFIED, found['47'].status)
+
+    def test_a_figure_about_something_else_is_not_a_conflict(self):
+        # The failure mode worth fearing is accusing a correct article of
+        # getting a fact wrong, so an unrelated number nearby proves nothing.
+        from . import claims
+        found = self._verified([(
+            'reuters.example', 'Cricket drew 42 spectators to the ground.',
+        )])
+        self.assertNotEqual(claims.DISPUTED, found['47'].status)
+
+    def test_agreement_outranks_disagreement(self):
+        # Outlets carry an original figure and a later correction. That
+        # somebody printed ours is the finding worth surfacing.
+        from . import claims
+        found = self._verified([
+            ('a.example', '47 people died in the Mumbai floods.'),
+            ('b.example', '42 people died in the Mumbai floods.'),
+        ])
+        self.assertEqual(claims.AGREED, found['47'].status)
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None, CORROBORATION_DEEP_READS=0)
+class ScoreCompositionTests(TestCase):
+    """The rating has to be auditable: the parts must add up to the whole."""
+
+    def setUp(self):
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=70.0, trust_tier=TrustTier.HIGH
+        )
+        self.item = ContentItem.objects.create(
+            source=self.source,
+            url='https://examplenews.com/mumbai-floods',
+            title='Mumbai floods close three rail lines',
+            body=FLOOD_STORY,
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(self.item.pk)
+        self.item.refresh_from_db()
+
+    def _assess(self, backend):
+        with patch('content.corroborate.get_search', return_value=backend):
+            return corroborate.assess(self.item)
+
+    def test_the_reasons_sum_to_the_rating(self):
+        result = self._assess(stub_search([
+            candidate('other.example', 'Mumbai floods shut rail lines',
+                      snippet='Flooding across Mumbai closed rail lines.'),
+        ]))
+        total = sum(r.effect for r in result.reasons if r.effect is not None)
+        self.assertAlmostEqual(result.score, round(total, 1), places=1)
+
+    def test_every_component_of_the_score_is_named(self):
+        result = self._assess(stub_search([]))
+        labels = [r.label for r in result.reasons]
+        self.assertIn('Who published it', labels)
+        self.assertIn('Who else reported it', labels)
+        self.assertIn('Where we looked', labels)
+
+    def test_a_withheld_rating_still_explains_itself(self):
+        result = self._assess(stub_search([], available=False, failed=['stub']))
+        self.assertIsNone(result.score)
+        self.assertTrue(result.reasons, 'a refusal to rate is still a finding')
+
+    def test_finding_nobody_lowers_the_rating_without_condemning_the_article(self):
+        result = self._assess(stub_search([]))
+        # Being first to report something is not dishonesty.
+        self.assertEqual(corroborate.Verdict.UNCORROBORATED, result.verdict)
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None, CORROBORATION_DEEP_READS=3)
+class DeepReadTests(TestCase):
+    """Reading the other outlets, rather than judging them by their headlines."""
+
+    def setUp(self):
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=70.0, trust_tier=TrustTier.HIGH
+        )
+        self.item = ContentItem.objects.create(
+            source=self.source,
+            url='https://examplenews.com/mumbai-floods',
+            title='Mumbai floods close three rail lines',
+            body=FLOOD_STORY,
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(self.item.pk)
+        self.item.refresh_from_db()
+        corroborate._page_cache.clear()
+
+    @staticmethod
+    def _page(html):
+        class _Response:
+            url = 'https://other.example/story'
+
+            def text(self):
+                return html
+        return _Response()
+
+    def test_an_outlets_own_text_is_what_gets_matched(self):
+        page = self._page(
+            '<html><body><article><h1>Rail chaos in the west</h1>'
+            '<p>Flooding across Mumbai closed suburban rail lines on Friday, '
+            'the Brihanmumbai Municipal Corporation said. Mumbai residents were '
+            'told to avoid low-lying roads as flooding spread.</p>'
+            '</article></body></html>'
+        )
+        # A headline that shares one word, over a story that shares the
+        # subject. Judged on the headline alone this is barely a match.
+        row = candidate('other.example', 'Rail chaos in the west',
+                        snippet='Mumbai flooding latest.')
+
+        with patch('content.corroborate.get_search', return_value=stub_search([row])), \
+                patch('content.http.request', return_value=page), \
+                patch('content.robots.check'):
+            result = corroborate.assess(self.item)
+
+        self.assertEqual(1, result.outlets_read)
+        self.assertEqual(1, result.independent_sources)
+        self.assertTrue(result.matches[0].read_in_full)
+
+    def test_an_outlet_that_refuses_us_is_not_held_against_the_article(self):
+        from .http import FetchError
+
+        row = candidate('other.example', 'Mumbai floods close rail lines',
+                        snippet='Flooding in Mumbai closed rail lines.')
+        with patch('content.corroborate.get_search', return_value=stub_search([row])), \
+                patch('content.http.request', side_effect=FetchError('403')), \
+                patch('content.robots.check'):
+            result = corroborate.assess(self.item)
+
+        self.assertEqual(0, result.outlets_read)
+        # The headline match still counts; only the deeper check was lost.
+        self.assertEqual(1, result.independent_sources)
+        self.assertIn('Gaps in this check', [r.label for r in result.reasons])
+
+    def test_a_conflicting_figure_is_reported_and_costs_the_rating(self):
+        item = ContentItem.objects.create(
+            source=self.source,
+            url='https://examplenews.com/toll',
+            title='Mumbai flood toll rises to 47',
+            body=(
+                'Officials said 47 people died in the Mumbai floods. Rescue teams '
+                'searched flooded Mumbai suburbs as the flooding spread.'
+            ),
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(item.pk)
+        item.refresh_from_db()
+
+        page = self._page(
+            '<html><body><article><h1>Mumbai flood toll</h1>'
+            '<p>42 people died in the Mumbai floods, officials said. Rescue teams '
+            'searched flooded Mumbai suburbs as the flooding spread.</p>'
+            '</article></body></html>'
+        )
+        row = candidate('other.example', 'Mumbai flood toll reaches 42',
+                        snippet='Mumbai floods death toll.')
+
+        with patch('content.corroborate.get_search', return_value=stub_search([row])), \
+                patch('content.http.request', return_value=page), \
+                patch('content.robots.check'):
+            result = corroborate.assess(item)
+
+        self.assertEqual(1, result.claims_disputed)
+        self.assertEqual(corroborate.Verdict.DISPUTED, result.verdict)
+        conflict = next(r for r in result.reasons if r.label == 'Conflicting figures')
+        self.assertLess(conflict.effect, 0)
+        self.assertIn('42', conflict.detail)
+
+
+class ReferenceOutletTests(SimpleTestCase):
+    def test_an_outlet_never_cross_references_itself(self):
+        from .reference_outlets import REFERENCE_FEEDS, feeds_excluding
+
+        kept = feeds_excluding('bbc.co.uk')
+        self.assertNotIn('bbc.co.uk', [row[0] for row in kept])
+        self.assertEqual(len(REFERENCE_FEEDS) - 1, len(kept))
+
+    def test_every_reference_feed_is_a_distinct_https_endpoint(self):
+        from .reference_outlets import REFERENCE_FEEDS
+
+        domains = [row[0] for row in REFERENCE_FEEDS]
+        self.assertEqual(len(domains), len(set(domains)), 'one entry per outlet')
+        for domain, url, label in REFERENCE_FEEDS:
+            self.assertTrue(url.startswith('https://'), f'{domain} feed must be https')
+            self.assertTrue(label, f'{domain} needs a readable label')

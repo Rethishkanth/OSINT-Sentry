@@ -334,7 +334,10 @@ CORROBORATION_SEARCH = env(
 # Mumbai floods must not corroborate a report of flooding this week.
 CORROBORATION_WINDOW_DAYS = env.int('CORROBORATION_WINDOW_DAYS', default=7)
 # Search backends AND their terms, so a long query returns nothing at all.
-CORROBORATION_MAX_QUERY_TERMS = env.int('CORROBORATION_MAX_QUERY_TERMS', default=4)
+# Three, not four: a fourth term does not refine the search, it empties it,
+# and precision is the similarity filter's job. Recall is what matters here —
+# a candidate that is never returned can never be examined.
+CORROBORATION_MAX_QUERY_TERMS = env.int('CORROBORATION_MAX_QUERY_TERMS', default=3)
 CORROBORATION_MIN_SIMILARITY = env.float('CORROBORATION_MIN_SIMILARITY', default=0.30)
 # Similarity is measured against this many of the article's strongest terms.
 # Most candidates are known only by their headline, which cannot carry a
@@ -349,6 +352,22 @@ CORROBORATION_RETRY_DELAY = env.float('CORROBORATION_RETRY_DELAY', default=3.0)
 # checking five articles in a row does not re-request the same feeds.
 CORROBORATION_FEED_CACHE_TTL = env.float('CORROBORATION_FEED_CACHE_TTL', default=900.0)
 CORROBORATION_MAX_FEEDS = env.int('CORROBORATION_MAX_FEEDS', default=12)
+# Outlets from content.reference_outlets consulted per check, whether or not
+# they are registered as Sources. Without these, a fresh install can only
+# cross-reference against the one or two feeds someone has added, and reports
+# every story as uncorroborated — truthfully, but having looked nowhere.
+CORROBORATION_MAX_REFERENCE_FEEDS = env.int('CORROBORATION_MAX_REFERENCE_FEEDS', default=10)
+# Other outlets' articles fetched in full per check, so their actual text can
+# be matched and the article's figures checked against theirs. Each is a real
+# request to someone else's server, spaced by the crawl delay — this is the
+# main thing an analyst waits for. 0 disables deep reading entirely, which
+# also disables claim checking, since a headline cannot corroborate a figure.
+CORROBORATION_DEEP_READS = env.int('CORROBORATION_DEEP_READS', default=5)
+CORROBORATION_PAGE_CACHE_TTL = env.float('CORROBORATION_PAGE_CACHE_TTL', default=1800.0)
+# Candidates below this are not worth fetching. Lower than MIN_SIMILARITY on
+# purpose: most candidates arrive as a headline, and the strict threshold is
+# applied after the page has been read.
+CORROBORATION_PREFILTER_SIMILARITY = env.float('CORROBORATION_PREFILTER_SIMILARITY', default=0.15)
 
 # Sources scoring below this are not ingested from at all.
 CONTENT_MIN_CREDIBILITY = env.float('CONTENT_MIN_CREDIBILITY', default=25.0)

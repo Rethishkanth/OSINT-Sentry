@@ -217,9 +217,15 @@ def corroborate_item(content_item_id):
             verdict=result.verdict,
             keywords=result.keywords,
             rationale=result.rationale,
+            reasons=[reason.as_dict() for reason in result.reasons],
             searched=result.searched[:255],
             sources_checked=result.sources_checked,
             independent_sources=result.independent_sources,
+            outlets_read=result.outlets_read,
+            claims=[claim.as_dict() for claim in result.claims],
+            claims_checked=result.claims_checked,
+            claims_agreed=result.claims_agreed,
+            claims_disputed=result.claims_disputed,
             engine_version=result.engine_version,
         )
         tracked = {
