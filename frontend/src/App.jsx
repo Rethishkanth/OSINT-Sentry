@@ -1,148 +1,140 @@
-import { useEffect, useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useState } from 'react'
 
-function App() {
-  const [count, setCount] = useState(0)
-  const [apiMessage, setApiMessage] = useState('Loading...')
-  const [sourcesStatus, setSourcesStatus] = useState('Loading...')
+import { apiFetch, clearTokens, hasToken } from './api'
+import Cursor from './components/Cursor'
+import Login from './components/Login'
+import Content from './modules/Content'
+import Credibility from './modules/Credibility'
+import Media from './modules/Media'
+import Overview from './modules/Overview'
+import ReportGis from './modules/ReportGis'
+import Social from './modules/Social'
+import './theme.css'
+
+const TABS = [
+  { key: 'overview', idx: '00', label: 'Overview' },
+  { key: 'credibility', idx: '01', label: 'Credibility' },
+  { key: 'content', idx: '02', label: 'Content' },
+  { key: 'social', idx: '03', label: 'Social' },
+  { key: 'media', idx: '04', label: 'Media' },
+  { key: 'reportgis', idx: '05', label: 'Report / GIS' },
+]
+
+function Clock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return <span>{now.toISOString().slice(11, 19)} UTC</span>
+}
+
+export default function App() {
+  const [authed, setAuthed] = useState(hasToken)
+  const [tab, setTab] = useState('overview')
+  const [overview, setOverview] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const loadOverview = useCallback(async () => {
+    if (!authed) return
+    setLoading(true)
+    setError(null)
+    try {
+      setOverview(await apiFetch('/api/overview/'))
+    } catch (err) {
+      // A dead token should drop us back to the login screen, not spin.
+      if (err.status === 401) {
+        clearTokens()
+        setAuthed(false)
+      }
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [authed])
 
   useEffect(() => {
-    fetch('/api/health/')
-      .then((res) => res.json())
-      .then((data) => setApiMessage(`${data.service} is ${data.status}`))
-      .catch(() => setApiMessage('Could not reach Django API'))
-  }, [])
+    loadOverview()
+  }, [loadOverview])
 
-  useEffect(() => {
-    // No JWT is sent yet, so a 401 here is the expected, correct result: it
-    // proves DRF's IsAuthenticated default is actually guarding the endpoint.
-    fetch('/api/sources/')
-      .then(async (res) => {
-        if (res.status === 401) {
-          setSourcesStatus('401 — auth required (as expected)')
-          return
-        }
-        const data = await res.json()
-        setSourcesStatus(`${data.count} source(s)`)
-      })
-      .catch(() => setSourcesStatus('Could not reach /api/sources/'))
-  }, [])
+  function signOut() {
+    clearTokens()
+    setAuthed(false)
+    setOverview(null)
+    setTab('overview')
+  }
+
+  if (!authed) {
+    return (
+      <>
+        <div className="ambience" />
+        <div className="glow-follow" />
+        <Cursor />
+        <Login onAuthed={() => setAuthed(true)} />
+      </>
+    )
+  }
+
+  const gisOnline = overview?.modules?.reportgis?.online ?? false
+  const gisReason = overview?.modules?.reportgis?.reason
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-          <p>API says: {apiMessage}</p>
-          <p>/api/sources/: {sourcesStatus}</p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      <div className="ambience" />
+      <div className="glow-follow" />
+      <Cursor />
 
-      <div className="ticks"></div>
+      <div className="shell">
+        <header className="topbar">
+          <div className="brand">
+            <span className="glitch" data-text="OSINT">OSINT</span>
+            <span>·</span>SENTRY
+          </div>
+          <div className="status-line">
+            <span><i className="dot" />Uplink active</span>
+            <span>
+              <i className={`dot ${gisOnline ? '' : 'warn'}`} />
+              GIS {gisOnline ? 'online' : 'offline'}
+            </span>
+            <Clock />
+            <button type="button" className="btn ghost" onClick={signOut}>
+              Disconnect
+            </button>
+          </div>
+        </header>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        <nav className="nav" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              onClick={() => setTab(t.key)}
+            >
+              <span className="idx">{t.idx}</span>
+              {t.label}
+            </button>
+          ))}
+        </nav>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+        <main>
+          {tab === 'overview' && (
+            <Overview
+              data={overview}
+              loading={loading}
+              error={error}
+              onSelect={setTab}
+            />
+          )}
+          {tab === 'credibility' && <Credibility />}
+          {tab === 'content' && <Content />}
+          {tab === 'social' && <Social />}
+          {tab === 'media' && <Media />}
+          {tab === 'reportgis' && <ReportGis online={gisOnline} reason={gisReason} />}
+        </main>
+      </div>
     </>
   )
 }
-
-export default App

@@ -21,3 +21,73 @@ class SourceViewSet(viewsets.ModelViewSet):
 def health(request):
     """Unauthenticated liveness check, also used by the frontend smoke test."""
     return Response({'status': 'ok', 'service': 'osint-sentry'})
+
+
+@api_view(['GET'])
+def overview(request):
+    """Counts and module status for the dashboard.
+
+    Reports which modules are actually online rather than letting the UI
+    assume — reportgis is not even installed when USE_GIS is off.
+    """
+    from django.apps import apps as django_apps
+    from django.conf import settings
+
+    from content.models import ContentItem, Entity
+    from credibility.models import CredibilityScore
+    from media.models import MediaItem, TamperingResult
+    from security.models import AuditLogEntry
+    from social.models import InteractionEdge, SocialAccount, SocialPost
+
+    gis_online = django_apps.is_installed('reportgis')
+
+    modules = {
+        'credibility': {
+            'online': True,
+            'scores': CredibilityScore.objects.count(),
+            'sources': Source.objects.count(),
+            'model_version': settings.CREDIBILITY_SCORER.rsplit('.', 1)[-1],
+        },
+        'content': {
+            'online': True,
+            'items': ContentItem.objects.count(),
+            'entities': Entity.objects.count(),
+            'analyzed': ContentItem.objects.filter(
+                status=ContentItem.Status.ANALYZED
+            ).count(),
+            'model_version': settings.CONTENT_ANALYZER.rsplit('.', 1)[-1],
+        },
+        'social': {
+            'online': True,
+            'accounts': SocialAccount.objects.count(),
+            'edges': InteractionEdge.objects.count(),
+            'posts': SocialPost.objects.count(),
+            'flagged': SocialAccount.objects.filter(bot_likelihood__gte=0.7).count(),
+            'model_version': settings.SOCIAL_GRAPH_SCORER.rsplit('.', 1)[-1],
+        },
+        'media': {
+            'online': True,
+            'items': MediaItem.objects.count(),
+            'results': TamperingResult.objects.count(),
+            'model_version': None,
+        },
+        'reportgis': {
+            'online': gis_online,
+            'reason': None if gis_online else 'GDAL/GEOS not installed (USE_GIS is off)',
+            'events': 0,
+            'reports': 0,
+            'model_version': None,
+        },
+    }
+
+    if gis_online:
+        GeoEvent = django_apps.get_model('reportgis', 'GeoEvent')
+        Report = django_apps.get_model('reportgis', 'Report')
+        modules['reportgis']['events'] = GeoEvent.objects.count()
+        modules['reportgis']['reports'] = Report.objects.count()
+
+    return Response({
+        'modules': modules,
+        'audit_entries': AuditLogEntry.objects.count(),
+        'gis_enabled': gis_online,
+    })

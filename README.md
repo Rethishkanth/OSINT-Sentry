@@ -40,8 +40,34 @@ social/           SocialAccount, InteractionEdge
 media/            MediaItem, TamperingResult
 reportgis/        GeoEvent (PostGIS PointField), Report — needs GDAL/GEOS
 security/         AuditLogEntry
-frontend/         Vite + React app, proxies /api to Django on :8000
+frontend/         Vite + React analyst console, proxies /api to Django on :8000
+  src/api.js      JWT client with transparent token refresh
+  src/theme.css   console theme and cursor styling
+  src/components/ Cursor, Panel, Login, shared table primitives
+  src/modules/    one view per module, plus the overview
 ```
+
+## The console
+
+`frontend/` is a JWT-authenticated analyst console covering all five modules.
+Log in with a superuser account; the token is exchanged at `/api/auth/token/`
+and refreshed automatically when the 30-minute access token expires.
+
+The interface is pointer-reactive throughout: a custom two-part cursor with
+viewport crosshairs, a spotlight that unmasks the background grid as it moves,
+per-panel sheen that tracks across each card, and a social graph whose nodes
+label themselves and trace their edges as the pointer nears them. Cursor
+position is written straight to the DOM in a `requestAnimationFrame` loop
+rather than React state, since `mousemove` fires far faster than a component
+should re-render.
+
+Visual design is an original take on a high-contrast cyberpunk console —
+acid yellow on near-black, angular clipped panels, cyan/magenta accents. No
+third-party assets, fonts, or marks are used, and there are **no runtime npm
+dependencies beyond React** — the graph and map are hand-rolled SVG.
+
+Anyone who has asked their system for reduced motion gets a static, fully
+legible console: the glitch, scanline, and cursor effects switch off.
 
 ## Prerequisites
 
