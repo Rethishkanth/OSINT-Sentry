@@ -31,6 +31,9 @@ class SourceSerializer(serializers.ModelSerializer):
             'registrar',
             'registry_status',
             'registry_checked_at',
+            'feed_url',
+            'feed_status',
+            'feed_checked_at',
             'latest_credibility_score',
             'created_at',
             'updated_at',
@@ -45,6 +48,10 @@ class SourceSerializer(serializers.ModelSerializer):
             'registrar',
             'registry_status',
             'registry_checked_at',
+            # feed_url stays writable: an operator who knows a site's feed
+            # should be able to set it rather than argue with discovery.
+            'feed_status',
+            'feed_checked_at',
         )
 
     def validate_domain(self, value):

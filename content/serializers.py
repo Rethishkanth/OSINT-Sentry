@@ -52,6 +52,20 @@ class ContentItemSerializer(serializers.ModelSerializer):
         )
 
 
+class FetchRequestSerializer(serializers.Serializer):
+    """Body for POST /api/content/fetch/ — one link, or one source's feed."""
+
+    url = serializers.CharField(required=False, allow_blank=True)
+    source = serializers.IntegerField(required=False)
+
+    def validate(self, attrs):
+        if not attrs.get('url') and not attrs.get('source'):
+            raise serializers.ValidationError(
+                'Give either a url to read, or a source whose feed to crawl.'
+            )
+        return attrs
+
+
 class IngestRequestSerializer(serializers.Serializer):
     """Body for POST /api/content/ingest/."""
 

@@ -1,11 +1,123 @@
 import { useState } from 'react'
 
+import { apiFetch } from '../api'
 import Panel from '../components/Panel'
 import { Badge, DataState } from '../components/common'
 import { useApiList } from '../hooks/useApiList'
 
+/** Read one page, or crawl one source's feed. Both run server-side, inline. */
+function Fetcher({ sources, onDone }) {
+  const [url, setUrl] = useState('')
+  const [state, setState] = useState({ phase: 'idle', message: null })
+  const busy = state.phase === 'working'
+
+  async function run(body, working) {
+    setState({ phase: 'working', message: working })
+    try {
+      const result = await apiFetch('/api/content/fetch/', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+      onDone(result.id ?? null)
+      setState({ phase: 'done', message: result.detail || 'Done.' })
+      return result
+    } catch (err) {
+      setState({ phase: 'error', message: err.message })
+      return null
+    }
+  }
+
+  async function readPage(event) {
+    event.preventDefault()
+    const target = url.trim()
+    if (!target) return
+    const result = await run({ url: target }, `Reading ${target}…`)
+    if (result) setUrl('')
+  }
+
+  return (
+    <Panel title="Read a page" tag="FETCH">
+      <form onSubmit={readPage}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+            <label htmlFor="fetch-url">Article address</label>
+            <input
+              id="fetch-url"
+              type="text"
+              value={url}
+              disabled={busy}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://www.theguardian.com/world/2026/…"
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </div>
+          <button type="submit" className="btn" disabled={busy || !url.trim()}>
+            {busy ? 'Reading…' : 'Read'}
+          </button>
+        </div>
+      </form>
+
+      <div className="mono-dim" style={{ marginTop: 10 }}>
+        Registers the site as a source if it is new, scores it, checks
+        robots.txt, then reads the page. A few seconds is normal — requests to
+        one host are deliberately spaced out.
+      </div>
+
+      {sources.rows.length > 0 && (
+        <>
+          <div className="metric-label" style={{ marginTop: 18 }}>Or crawl a source&apos;s feed</div>
+          <div className="table-wrap" style={{ marginTop: 8 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Feed</th>
+                  <th>Last result</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {sources.rows.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.domain}</td>
+                    <td className="mono-dim" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {s.feed_url || '—'}
+                    </td>
+                    <td><Badge value={s.feed_status} /></td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={busy}
+                        onClick={() => run({ source: s.id }, `Crawling ${s.domain}…`)}
+                      >
+                        Crawl feed
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {state.message && (
+        <div
+          className={`notice ${state.phase === 'error' ? 'bad' : ''}`}
+          style={{ marginTop: 12 }}
+        >
+          {state.message}
+        </div>
+      )}
+    </Panel>
+  )
+}
+
 export default function Content() {
   const items = useApiList('/api/content/?ordering=-created_at')
+  const sources = useApiList('/api/sources/')
   const [selectedId, setSelectedId] = useState(null)
 
   const selected = items.rows.find((i) => i.id === selectedId) || items.rows[0] || null
@@ -30,6 +142,17 @@ export default function Content() {
           <div className="metric-label">Named entity mentions</div>
         </Panel>
       </div>
+
+      <Fetcher
+        sources={sources}
+        onDone={(newId) => {
+          if (newId) setSelectedId(newId)
+          items.reload()
+          sources.reload()
+        }}
+      />
+
+      <div style={{ height: 16 }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: 16 }}>
         <Panel title="Content stream" tag="SELECT TO INSPECT">

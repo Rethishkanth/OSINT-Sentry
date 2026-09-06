@@ -18,7 +18,7 @@ endpoints, admin — is real and testable today.
 | --- | --- | --- | --- |
 | `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT |
 | `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
-| `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | `NullFetcher` — crawls nothing | Scrapy spiders |
+| `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | **real** feed-first fetcher over `urllib` | Scrapy spiders |
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap | RGCN (PyG/DGL) |
 | `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons | RoBERTa |
 
@@ -93,6 +93,90 @@ no network call and stays fast enough to run inside a request.
 Set `CREDIBILITY_REGISTRY_CLIENT=credibility.registry.NullRegistryClient` to
 run fully offline.
 
+## Module 2: reading the web without being a nuisance
+
+Module 2 is the part that actually goes and gets things. Before it existed the
+pipeline was real but starved — `NullFetcher` meant nothing was ever ingested
+unless a human POSTed it.
+
+It is **feed-first**. For each source it finds the RSS/Atom feed the publisher
+already maintains, reads it, and fetches only the entries not already stored.
+That is one request per new article rather than a crawl, and the publisher
+decides what is in scope. Feed discovery tries, in order: a `feed_url` set on
+the source, the `<link rel="alternate">` the page advertises, then a short list
+of conventional paths.
+
+Two things run before any request goes out:
+
+- **The credibility gate, first.** A source below `CONTENT_MIN_CREDIBILITY`
+  is never contacted at all. Letting the gate reject items *after* fetching
+  would mean spending someone else's bandwidth on documents we intend to
+  discard.
+- **robots.txt, on every hop.** Including redirect targets — which is why
+  redirects are followed by hand rather than by `urllib`. A site that could
+  redirect us past its own rules would make the check decorative.
+
+When robots.txt cannot be read, the answer is **no**:
+
+| robots.txt response | Behaviour |
+| --- | --- |
+| 2xx | parsed and obeyed, `Crawl-delay` included |
+| 4xx | no file exists, so nothing is disallowed |
+| 5xx, timeout, DNS failure | **disallow everything** |
+
+"We could not ask permission" is not "permission granted", and failing open
+there would crawl a site hardest exactly while it is struggling.
+
+The other limits are in `content/http.py` and are limits rather than tuning
+knobs: an identifying User-Agent with a contact address, a 2 MB cap applied to
+the *stream* rather than to the `Content-Length` a server claims, a
+content-type allowlist, `Accept-Encoding: identity` so there is no compression
+bomb behind the cap, and a per-host minimum interval that yields to a longer
+`Crawl-delay`.
+
+**Hostnames resolving to private, loopback, or link-local addresses are
+refused.** A submitted domain is attacker-controlled input; without that check
+a link pointing at `169.254.169.254` turns this fetcher into a proxy into the
+machine it runs on. The check is on every hop, so a redirect cannot smuggle
+one in. It resolves and then connects, so a determined DNS-rebinding attack
+still has a window — closing that needs connecting to the pinned address,
+which `urllib` does not expose.
+
+Extraction is `html.parser`, not Scrapy: strip the furniture, prefer text
+inside `<article>`, fall back to paragraphs, then to the whole body. Metadata
+comes from OpenGraph, JSON-LD, and `article:*` before `<title>`. Storage is
+keyed on the page's **canonical URL**, so campaign parameters do not store one
+article five times. There is no JavaScript engine — a page rendered entirely
+client-side yields nothing, and says so rather than storing an empty body.
+
+Feeds are parsed with `xml.etree`, which is documented as vulnerable to entity
+expansion. Every such attack needs a document type declaration, so a feed
+containing `<!DOCTYPE` or `<!ENTITY` is refused before the parser sees it. No
+real feed has one, so this costs nothing and avoids a dependency.
+
+A source found to have no feed is left alone for a day
+(`CONTENT_FEED_RETRY_AFTER`) rather than re-probing every conventional path
+every hour. Clicking **Crawl feed** in the console overrides that, since the
+back-off exists to restrain the schedule, not the analyst.
+
+Set `CONTENT_FETCHER=content.fetchers.NullFetcher` to contact nobody — the
+same switch `NullRegistryClient` gives Module 1.
+
+### Testing it
+
+`content/tests.py` is 59 tests and **none of them touch the network**:
+everything outbound is behind `content.http.request`, so the tests replace it
+and drive the whole pipeline on canned bytes.
+
+```bash
+.venv/Scripts/python.exe manage.py test content
+```
+
+They cover the cases that are hard to check by eye — robots.txt returning 503,
+a redirect pointing at `127.0.0.1`, a feed declaring a DOCTYPE, an oversized
+body, a page that is mostly navigation, and a low-scoring source proving it is
+never contacted.
+
 ## Layout
 
 ```
@@ -102,7 +186,13 @@ backend/          Django project (settings split into base/dev/prod)
 core/             Source model, DRF router, shared exception handler, tasks
 accounts/         Role groups (Analyst / Reviewer / Admin) as a data migration
 credibility/      CredibilityScore
-content/          ContentItem
+content/          ContentItem, and the fetcher that fills it
+  http.py         the only outbound calls: limits, rate limiting, host checks
+  robots.py       robots.txt, cached per host, failing closed
+  extract.py      HTML -> article, via html.parser
+  feeds.py        RSS/Atom
+  fetchers.py     feed-first WebFetcher; NullFetcher is the offline switch
+  pipeline.py     NER / topics / summary (heuristic stand-in)
 social/           SocialAccount, InteractionEdge
 media/            MediaItem, TamperingResult
 reportgis/        GeoEvent (PostGIS PointField), Report — needs GDAL/GEOS
@@ -215,7 +305,8 @@ Smoke-test the worker:
 | `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
-| `POST /api/content/ingest/` | JWT | submit a document; 409 if the credibility gate rejects it |
+| `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
+| `POST /api/content/ingest/` | JWT | submit a document you already have; 409 if the gate rejects it |
 | `POST /api/content/{id}/analyze/` | JWT | re-run analysis |
 | `GET /api/social/accounts/` | JWT | accounts with bot-likelihood and coordination scores |
 | `GET /api/social/accounts/flagged/` | JWT | accounts over a bot-likelihood threshold |
@@ -227,9 +318,11 @@ Smoke-test the worker:
 
 1. Creating a `Source` fires a `post_save` signal that queues `score_source`
    on commit — scoring is never triggered by hand.
-2. `ingest_item` puts every document through that score before saving it. A
-   source below `CONTENT_MIN_CREDIBILITY` (default 25) is rejected, and one
-   that has never been scored is scored inline rather than waved through.
+2. `fetch_source` checks that score *before* making a single request, then
+   reads the source's feed and fetches what is new. `ingest_item` re-checks it
+   for anything arriving by other routes. A source below
+   `CONTENT_MIN_CREDIBILITY` (default 25) is rejected, and one that has never
+   been scored is scored inline rather than waved through.
 3. A stored `ContentItem` queues `analyze_content`, which writes entities,
    topics, and a summary. Re-running replaces prior output instead of
    duplicating it.

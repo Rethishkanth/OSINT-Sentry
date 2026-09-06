@@ -49,6 +49,19 @@ class Source(TimeStampedModel):
     )
     registry_checked_at = models.DateTimeField(null=True, blank=True)
 
+    # Cached feed discovery, written by content.fetchers.WebFetcher. Kept so a
+    # crawl does not re-derive the feed URL every hour, and so an operator can
+    # correct a bad guess by editing one field instead of debugging discovery.
+    feed_url = models.URLField(
+        max_length=1000, blank=True,
+        help_text='RSS/Atom feed. Found automatically; set it here to override.',
+    )
+    feed_status = models.CharField(
+        max_length=16, blank=True,
+        help_text='Outcome of the last feed lookup (ok, no_feed, blocked…).',
+    )
+    feed_checked_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['domain']
 

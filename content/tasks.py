@@ -5,12 +5,14 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core.models import Source
 from credibility.models import CredibilityScore
 from credibility.tasks import refresh_domain_registration, score_source
 
-from .fetchers import get_fetcher
+from .fetchers import fetch_page, get_fetcher
+from .http import Blocked, FetchError, assert_fetchable
 from .models import ContentItem, ContentTopic, Entity, Topic
 from .pipeline import get_analyzer
 
@@ -75,6 +77,11 @@ def ingest_item(source_id, url, title='', body='', author='', language='', publi
     except CredibilityGateRejection as exc:
         logger.info('Rejected by credibility gate: %s', exc)
         return None
+
+    # Celery serialises arguments as JSON, so a datetime arrives here as an
+    # ISO string. Parsing it in one place means callers can pass either.
+    if isinstance(published_at, str):
+        published_at = parse_datetime(published_at) if published_at else None
 
     item, created = ContentItem.objects.get_or_create(
         url=url,
@@ -154,22 +161,162 @@ def analyze_content(self, content_item_id):
     return item.pk
 
 
+def _store(source, fetched, inline: bool):
+    """Hand one fetched document to the ingest path."""
+    published = fetched.published_at.isoformat() if fetched.published_at else None
+    args = (source.pk, fetched.url)
+    kwargs = {
+        'title': fetched.title,
+        'body': fetched.body,
+        'author': fetched.author,
+        'language': fetched.language,
+        'published_at': published,
+    }
+    if inline:
+        return ingest_item.run(*args, **kwargs)
+    ingest_item.delay(*args, **kwargs)
+    return None
+
+
+@shared_task
+def fetch_source(source_id, inline=False, force=False):
+    """Crawl one source's feed and ingest whatever is new.
+
+    The credibility gate is checked *before* any request goes out, not after.
+    Letting ingest_item reject the items afterwards would mean a source we
+    have already decided not to trust still gets crawled every hour — we
+    would be spending someone else's bandwidth to fetch documents we intend
+    to throw away.
+    """
+    try:
+        source = Source.objects.get(pk=source_id)
+    except ObjectDoesNotExist:
+        logger.warning('fetch_source: Source %s no longer exists', source_id)
+        return {'error': 'source not found'}
+
+    try:
+        check_credibility_gate(source)
+    except CredibilityGateRejection as exc:
+        logger.info('Not crawling %s: %s', source.domain, exc)
+        return {'source': source.domain, 'fetched': 0, 'stored': 0, 'detail': str(exc)}
+
+    try:
+        fetched = get_fetcher().fetch(source, force=force)
+    except (Blocked, FetchError) as exc:
+        logger.info('Fetch failed for %s: %s', source.domain, exc)
+        return {'source': source.domain, 'fetched': 0, 'stored': 0, 'detail': str(exc)}
+
+    stored = [_store(source, item, inline) for item in fetched]
+    ids = [pk for pk in stored if pk]
+    if inline:
+        for pk in ids:
+            analyze_content.run(pk)
+
+    source.refresh_from_db(fields=['feed_url', 'feed_status'])
+    return {
+        'source': source.domain,
+        'feed_url': source.feed_url,
+        'feed_status': source.feed_status,
+        'fetched': len(fetched),
+        'stored': len(ids) if inline else len(fetched),
+        'item_ids': ids,
+        'detail': (
+            f'{len(fetched)} new item(s) from {source.feed_url}'
+            if fetched else _no_items_detail(source)
+        ),
+    }
+
+
+def _no_items_detail(source) -> str:
+    """Say which kind of nothing happened — the three cases look identical."""
+    from .fetchers import FeedStatus
+
+    return {
+        FeedStatus.NO_FEED: (
+            f'No RSS or Atom feed found for {source.domain}. '
+            'Set one on the source if you know its address.'
+        ),
+        FeedStatus.BLOCKED: f"{source.domain}'s robots.txt disallows the feed.",
+        FeedStatus.ERROR: f'{source.domain}: the feed could not be read.',
+        FeedStatus.DISABLED: 'Fetching is disabled (CONTENT_FETCHER is NullFetcher).',
+    }.get(source.feed_status, f'Nothing new in {source.domain}\'s feed.')
+
+
+@shared_task
+def fetch_url(url, inline=True):
+    """Fetch one page by URL, registering its site as a Source if needed.
+
+    This is the "paste a link" path. It goes through exactly the same gate,
+    robots check, and limits as a scheduled crawl — the only difference is
+    that a person asked for it.
+    """
+    from core.domains import InvalidDomain, normalize_domain
+
+    try:
+        domain = normalize_domain(url)
+    except InvalidDomain as exc:
+        return {'error': str(exc)}
+
+    # Check the host before creating anything. A URL we are never allowed to
+    # fetch should not leave a Source row behind — or trigger an RDAP lookup
+    # and a credibility score for a site we will not read.
+    try:
+        assert_fetchable(url)
+    except Blocked as exc:
+        return {'error': str(exc), 'blocked': True}
+    except FetchError as exc:
+        return {'error': str(exc)}
+
+    source, created = Source.objects.get_or_create(
+        domain=domain,
+        defaults={'url': f'https://{domain}/', 'first_seen': timezone.now()},
+    )
+
+    try:
+        check_credibility_gate(source)
+    except CredibilityGateRejection as exc:
+        return {'error': str(exc), 'source': source.pk, 'gate': 'rejected'}
+
+    try:
+        fetched = fetch_page(url)
+    except Blocked as exc:
+        return {'error': str(exc), 'source': source.pk, 'blocked': True}
+    except FetchError as exc:
+        return {'error': str(exc), 'source': source.pk}
+
+    if not fetched.body.strip():
+        return {
+            'error': (
+                f'Nothing readable at {url}. The page may be rendered entirely '
+                'by JavaScript, which this fetcher does not run.'
+            ),
+            'source': source.pk,
+        }
+
+    item_id = _store(source, fetched, inline=True)
+    if item_id is None:
+        return {'error': 'Rejected by the credibility gate.', 'source': source.pk}
+    if inline:
+        analyze_content.run(item_id)
+    return {
+        'source': source.pk,
+        'source_domain': domain,
+        'source_created': created,
+        'content_item': item_id,
+        'detail': f'Read {len(fetched.body)} characters from {fetched.url}.',
+    }
+
+
 @shared_task
 def run_scheduled_ingest():
-    """Periodic crawl of every active source. Wired to Celery Beat."""
-    fetcher = get_fetcher()
-    queued = 0
-    for source in Source.objects.filter(is_active=True):
-        for fetched in fetcher.fetch(source):
-            ingest_item.delay(
-                source.pk,
-                fetched.url,
-                title=fetched.title,
-                body=fetched.body,
-                author=fetched.author,
-                language=fetched.language,
-                published_at=fetched.published_at,
-            )
-            queued += 1
-    logger.info('Scheduled ingest queued %d item(s)', queued)
-    return queued
+    """Periodic crawl of every active source. Wired to Celery Beat.
+
+    Fans out one task per source rather than crawling them in a loop: a slow
+    or unreachable site then delays only itself, and the per-host rate limiter
+    is not fighting a single long-running task for the whole fleet.
+    """
+    sources = list(Source.objects.filter(is_active=True).values_list('pk', flat=True))
+    for pk in sources:
+        fetch_source.delay(pk)
+    logger.info('Scheduled ingest queued %d source(s)', len(sources))
+    return len(sources)

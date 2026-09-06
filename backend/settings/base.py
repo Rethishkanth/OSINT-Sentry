@@ -287,7 +287,38 @@ CREDIBILITY_USER_AGENT = env(
     default='OSINT-Sentry/1.0 (+registry lookup; contact: admin@localhost)',
 )
 CONTENT_ANALYZER = env('CONTENT_ANALYZER', default='content.pipeline.HeuristicAnalyzer')
-CONTENT_FETCHER = env('CONTENT_FETCHER', default='content.fetchers.NullFetcher')
+
+# Module 2 reads real web pages. Point CONTENT_FETCHER at NullFetcher to make
+# the system contact nobody, the same switch NullRegistryClient gives Module 1.
+CONTENT_FETCHER = env('CONTENT_FETCHER', default='content.fetchers.WebFetcher')
+
+# Everything the fetcher is allowed to do to someone else's server. These are
+# limits, not tuning knobs: raising them makes this system a worse citizen.
+CONTENT_USER_AGENT = env(
+    'CONTENT_USER_AGENT',
+    default='OSINT-Sentry/1.0 (+content fetcher; contact: admin@localhost)',
+)
+CONTENT_FETCH_TIMEOUT = env.float('CONTENT_FETCH_TIMEOUT', default=15.0)
+# Applied to the stream, not to Content-Length. 2MB is a very long article.
+CONTENT_MAX_BYTES = env.int('CONTENT_MAX_BYTES', default=2_000_000)
+# Minimum seconds between two requests to the same host, unless the host's own
+# robots.txt asks for longer — in which case it wins.
+CONTENT_CRAWL_DELAY = env.float('CONTENT_CRAWL_DELAY', default=2.0)
+CONTENT_MAX_REDIRECTS = env.int('CONTENT_MAX_REDIRECTS', default=5)
+CONTENT_ROBOTS_CACHE_TTL = env.float('CONTENT_ROBOTS_CACHE_TTL', default=3600.0)
+CONTENT_MAX_ITEMS_PER_FETCH = env.int('CONTENT_MAX_ITEMS_PER_FETCH', default=10)
+# After finding a source has no readable feed, leave it alone this long.
+# Discovery costs a homepage request plus a probe of each conventional path,
+# and repeating that hourly against a site that simply has no feed is rude.
+# A person clicking "Crawl feed" overrides it.
+CONTENT_FEED_RETRY_AFTER = env.float('CONTENT_FEED_RETRY_AFTER', default=86_400.0)
+# False stores each feed entry's own summary instead of fetching the article
+# page — one request per source instead of one per article.
+CONTENT_FETCH_BODIES = env.bool('CONTENT_FETCH_BODIES', default=True)
+# Hostnames resolving to private, loopback, or link-local addresses are
+# refused. Only turn this on to crawl a site on your own network, and never in
+# an environment where users can submit URLs.
+CONTENT_ALLOW_PRIVATE_HOSTS = env.bool('CONTENT_ALLOW_PRIVATE_HOSTS', default=False)
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
 SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
 
