@@ -55,7 +55,9 @@ class SourceFeatures:
     domain_age_days: int | None
     registry_status: str
     registrar: str
-    has_https: bool
+    # Tri-state on purpose. None means no URL was ever recorded for this
+    # source, which is not the same as having observed a plaintext one.
+    has_https: bool | None
     has_publisher: bool
     is_active: bool
     content_item_count: int
@@ -96,7 +98,7 @@ def extract_features(source) -> SourceFeatures:
         domain_age_days=domain_age_days,
         registry_status=source.registry_status or '',
         registrar=source.registrar or '',
-        has_https=source.url.startswith('https://'),
+        has_https=source.url.startswith('https://') if source.url else None,
         has_publisher=bool(source.publisher),
         is_active=source.is_active,
         content_item_count=source.content_items.count(),
@@ -150,9 +152,13 @@ class HeuristicScorer(BaseScorer):
         # HTTPS earns nothing. It is free, automatic, and universal — every
         # phishing site has it — so its presence is not evidence of anything.
         # Its *absence* in 2026 is genuinely anomalous, so that still costs.
-        if not features.has_https:
+        # An unrecorded URL is neither: penalising a source for a scheme we
+        # never observed would mark down every domain added without one.
+        if features.has_https is False:
             score -= 10
             reasons.append('no HTTPS (-10)')
+        elif features.has_https is None:
+            reasons.append('no URL recorded, so transport is unknown (0)')
 
         if features.has_publisher:
             score += 8

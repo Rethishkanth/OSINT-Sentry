@@ -26,6 +26,34 @@ Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
 in a real model is a settings change; no call site moves.
 
+## Submitting a website for scoring
+
+The **Check a website** box on the Credibility page takes whatever you have —
+a pasted article URL, a copied address bar, or a bare hostname. It is reduced
+server-side to the domain a registry will answer for, so all of these are the
+same source:
+
+```
+https://www.bbc.co.uk/news/uk-politics-12345?utm_source=twitter
+news.bbc.co.uk
+BBC.CO.UK.
+bbc.co.uk
+```
+
+Normalising happens in `core.domains`, not in the console, so the API, the
+admin, and a shell one-liner cannot disagree about what `bbc.co.uk` is.
+Submitting a site that is already tracked re-scores it rather than returning a
+uniqueness error — someone pasting a link is asking "check this", and "you
+already added that" answers a question they did not ask.
+
+Inputs that name no domain are rejected with the reason: an IP address (no
+registration record exists to look up), a `mailto:`/`javascript:` scheme,
+something with no domain suffix, or illegal characters.
+
+A pasted `https://` link is also recorded as the source's URL, since it is
+direct evidence the site serves TLS. Without one, transport reads as
+*unknown* and costs nothing — only an observed plaintext URL is penalised.
+
 ## Module 1: what the credibility score actually measures
 
 Module 1 is no longer a placeholder. It reads **real domain registration data
@@ -46,7 +74,9 @@ inversion:
 Other deliberate choices:
 
 - **HTTPS earns nothing.** It is free, automatic, and universal — every phishing
-  site has it — so its presence is not evidence. Its *absence* still costs 10.
+  site has it — so its presence is not evidence. An observed *plaintext* URL
+  still costs 10; a source with no URL recorded is scored as unknown, not as
+  insecure.
 - **"Known to us" is recorded but never scored.** Rewarding it is circular. It
   stays in `SourceFeatures` so the provenance hash covers it, at weight zero.
 - **Metadata cannot reach VERIFIED.** The score is capped at 82; the tier needs
@@ -181,6 +211,7 @@ Smoke-test the worker:
 | `POST /api/auth/token/` | none | obtain JWT access/refresh pair |
 | `POST /api/auth/token/refresh/` | none | refresh access token |
 | `GET /api/sources/` | JWT | list tracked sources |
+| `POST /api/sources/` | JWT | submit a site by URL or domain; 200 + rescore if already tracked |
 | `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |

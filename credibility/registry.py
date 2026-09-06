@@ -23,6 +23,11 @@ from datetime import datetime, timezone as dt_timezone
 from django.conf import settings
 from django.utils.module_loading import import_string
 
+# Re-exported: scoring.py and the serializers import registrable_domain from
+# here. It lives in core because the API and admin need it to normalise input
+# long before anything credibility-specific runs.
+from core.domains import registrable_domain  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BOOTSTRAP = 'https://rdap.org/domain/'
@@ -30,24 +35,6 @@ DEFAULT_TIMEOUT = 10.0
 DEFAULT_ATTEMPTS = 2
 DEFAULT_RETRY_DELAY = 1.5
 DEFAULT_USER_AGENT = 'OSINT-Sentry/1.0 (+registry lookup; contact: admin@localhost)'
-
-# Public-suffix handling without pulling in the full Public Suffix List. These
-# are the multi-label suffixes common enough to matter; anything else falls
-# back to the last two labels. A wrong guess here means the lookup 404s, which
-# is recorded as 'not_found' rather than silently scoring the domain as new.
-MULTI_LABEL_SUFFIXES = frozenset({
-    'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'net.uk', 'sch.uk',
-    'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au', 'id.au',
-    'co.nz', 'net.nz', 'org.nz', 'govt.nz', 'ac.nz',
-    'co.in', 'net.in', 'org.in', 'gen.in', 'firm.in', 'ac.in', 'edu.in', 'gov.in',
-    'co.za', 'org.za', 'net.za', 'gov.za', 'ac.za',
-    'co.jp', 'or.jp', 'ne.jp', 'ac.jp', 'go.jp',
-    'com.br', 'net.br', 'org.br', 'gov.br',
-    'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn',
-    'com.mx', 'com.ar', 'com.tr', 'com.sg', 'com.hk', 'com.tw', 'com.my',
-    'co.kr', 'or.kr', 'go.kr',
-    'com.pl', 'com.ua', 'co.il', 'org.il', 'ac.il',
-})
 
 
 class RegistryStatus:
@@ -69,22 +56,6 @@ class RegistrationInfo:
     registrar: str = ''
     status: str = RegistryStatus.ERROR
     detail: str = ''
-
-
-def registrable_domain(hostname: str) -> str:
-    """Reduce a hostname to the domain a registry will actually answer for.
-
-    news.bbc.co.uk -> bbc.co.uk, www.example.com -> example.com
-    """
-    host = (hostname or '').strip().lower().rstrip('.')
-    if host.startswith('www.'):
-        host = host[4:]
-    labels = host.split('.')
-    if len(labels) <= 2:
-        return host
-    if '.'.join(labels[-2:]) in MULTI_LABEL_SUFFIXES:
-        return '.'.join(labels[-3:])
-    return '.'.join(labels[-2:])
 
 
 def _parse_rdap_date(value: str) -> datetime | None:

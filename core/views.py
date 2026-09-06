@@ -1,8 +1,10 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from .domains import InvalidDomain, normalize_domain, scheme_of
 from .models import Source
 from .serializers import SourceSerializer
 
@@ -14,6 +16,63 @@ class SourceViewSet(viewsets.ModelViewSet):
     serializer_class = SourceSerializer
     search_fields = ('domain', 'name', 'publisher')
     ordering_fields = ('domain', 'created_at', 'last_seen')
+
+    def create(self, request, *args, **kwargs):
+        """Submit a website for scoring, given a URL or a bare domain.
+
+        Submitting a site that is already tracked re-scores it instead of
+        returning a uniqueness error. Someone pasting a link is asking "check
+        this", and "you already added that" answers a question they did not
+        ask — while leaving the score they wanted just as stale as it was.
+        """
+        # Imported here rather than at module scope: credibility imports core,
+        # so a top-level import would close the cycle.
+        from celery import chain
+
+        from credibility.tasks import refresh_domain_registration, score_source
+
+        try:
+            domain = normalize_domain(request.data.get('domain', ''))
+        except InvalidDomain as exc:
+            raise ValidationError({'domain': [str(exc)]}) from exc
+
+        existing = self.get_queryset().filter(domain=domain).first()
+        if existing is not None:
+            chain(
+                refresh_domain_registration.si(existing.pk),
+                score_source.si(existing.pk),
+            ).delay()
+            return Response(
+                {
+                    **self.get_serializer(existing).data,
+                    'created': False,
+                    'detail': f'{domain} is already tracked — a rescore is queued.',
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        data = request.data.copy()
+        if not data.get('url'):
+            # A pasted https:// link is evidence the site serves TLS. Dropping
+            # it would leave the scorer recording transport as unknown for a
+            # site we were just handed proof about.
+            scheme = scheme_of(request.data.get('domain', ''))
+            if scheme:
+                data['url'] = f'{scheme}://{domain}/'
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        # New sources are scored by the post_save signal, not from here.
+        self.perform_create(serializer)
+        return Response(
+            {
+                **serializer.data,
+                'created': True,
+                'detail': f'Tracking {domain}. Looking up its registration…',
+            },
+            status=status.HTTP_201_CREATED,
+            headers=self.get_success_headers(serializer.data),
+        )
 
 
 @api_view(['GET'])

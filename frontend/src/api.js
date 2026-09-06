@@ -44,7 +44,15 @@ export class ApiError extends Error {
 async function parseError(res) {
   try {
     const data = await res.json()
-    // The backend normalises everything to {"error": {...}}.
+    // The backend normalises everything to {"error": {...}}, putting per-field
+    // messages under .fields. Surfacing the first one matters: the generic
+    // wrapper just says "Validation failed", which tells the user nothing
+    // about which field it disliked or why.
+    const fields = data?.error?.fields
+    if (fields) {
+      const first = Object.values(fields).flat()[0]
+      if (first) return String(first)
+    }
     return data?.error?.message || data?.detail || `Request failed (${res.status})`
   } catch {
     return `Request failed (${res.status})`

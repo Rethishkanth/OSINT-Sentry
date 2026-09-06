@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
+from .domains import InvalidDomain, normalize_domain
 
 
 class TimeStampedModel(models.Model):
@@ -14,8 +17,14 @@ class TimeStampedModel(models.Model):
 class Source(TimeStampedModel):
     """A publisher or origin that content is attributed to."""
 
-    name = models.CharField(max_length=255)
-    domain = models.CharField(max_length=255, unique=True, db_index=True)
+    name = models.CharField(
+        max_length=255, blank=True,
+        help_text='Display name. Defaults to the domain when left empty.',
+    )
+    domain = models.CharField(
+        max_length=255, unique=True, db_index=True,
+        help_text='A full URL is accepted and reduced to its domain.',
+    )
     url = models.URLField(blank=True)
     publisher = models.CharField(max_length=255, blank=True)
     country = models.CharField(max_length=2, blank=True, help_text='ISO 3166-1 alpha-2')
@@ -45,3 +54,23 @@ class Source(TimeStampedModel):
 
     def __str__(self):
         return self.domain
+
+    def clean(self):
+        """Normalise on the form path, so the admin reports bad input inline."""
+        try:
+            self.domain = normalize_domain(self.domain)
+        except InvalidDomain as exc:
+            raise ValidationError({'domain': str(exc)}) from exc
+
+    def save(self, *args, **kwargs):
+        """Normalise on every write, not just the form path.
+
+        `domain` is unique and is the key every registry lookup is made
+        against, so it cannot be allowed to hold a full URL just because the
+        row was created from a shell or a fixture. Idempotent: normalising an
+        already-normalised domain is a no-op.
+        """
+        self.domain = normalize_domain(self.domain)
+        if not self.name:
+            self.name = self.domain
+        super().save(*args, **kwargs)
