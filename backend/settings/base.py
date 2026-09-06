@@ -226,7 +226,11 @@ if CELERY_BROKER_URL.startswith('filesystem://'):
         'data_folder_out': str(_broker_dir / 'queue'),
         'processed_folder': str(_broker_dir / 'processed'),
         'store_processed': True,
+        # Without this the transport drops its control exchange files into the
+        # working directory, i.e. straight into the repo root.
+        'control_folder': str(_broker_dir / 'control'),
     }
+    (_broker_dir / 'control').mkdir(parents=True, exist_ok=True)
 
 # Results go to the database via django-celery-results, so no result store has
 # to be running either. Celery's own file:// backend cannot parse a Windows
