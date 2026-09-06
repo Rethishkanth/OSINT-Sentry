@@ -322,6 +322,34 @@ CONTENT_ALLOW_PRIVATE_HOSTS = env.bool('CONTENT_ALLOW_PRIVATE_HOSTS', default=Fa
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
 SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
 
+# Corroboration: rating a story by whether independent outlets carried it too.
+# CompositeSearch looks through what we have already ingested *and* GDELT's
+# free, key-less index of global news. NullSearch disables it, and reports
+# itself unavailable rather than empty so it cannot be read as evidence that
+# nothing corroborates a story.
+CORROBORATION_SEARCH = env(
+    'CORROBORATION_SEARCH', default='content.corroborate.CompositeSearch'
+)
+# How far either side of publication a matching story still counts. The 2005
+# Mumbai floods must not corroborate a report of flooding this week.
+CORROBORATION_WINDOW_DAYS = env.int('CORROBORATION_WINDOW_DAYS', default=7)
+# Search backends AND their terms, so a long query returns nothing at all.
+CORROBORATION_MAX_QUERY_TERMS = env.int('CORROBORATION_MAX_QUERY_TERMS', default=4)
+CORROBORATION_MIN_SIMILARITY = env.float('CORROBORATION_MIN_SIMILARITY', default=0.30)
+# Similarity is measured against this many of the article's strongest terms.
+# Most candidates are known only by their headline, which cannot carry a
+# dozen terms; dividing by all of them discards real matches.
+CORROBORATION_SIMILARITY_TERMS = env.int('CORROBORATION_SIMILARITY_TERMS', default=5)
+CORROBORATION_MAX_RECORDS = env.int('CORROBORATION_MAX_RECORDS', default=30)
+CORROBORATION_SEARCH_TIMEOUT = env.float('CORROBORATION_SEARCH_TIMEOUT', default=20.0)
+# GDELT rate-limits hard and a 429 is transient, so retry before giving up.
+CORROBORATION_SEARCH_ATTEMPTS = env.int('CORROBORATION_SEARCH_ATTEMPTS', default=4)
+CORROBORATION_RETRY_DELAY = env.float('CORROBORATION_RETRY_DELAY', default=3.0)
+# Live feeds of other tracked outlets are re-read at most this often, so
+# checking five articles in a row does not re-request the same feeds.
+CORROBORATION_FEED_CACHE_TTL = env.float('CORROBORATION_FEED_CACHE_TTL', default=900.0)
+CORROBORATION_MAX_FEEDS = env.int('CORROBORATION_MAX_FEEDS', default=12)
+
 # Sources scoring below this are not ingested from at all.
 CONTENT_MIN_CREDIBILITY = env.float('CONTENT_MIN_CREDIBILITY', default=25.0)
 

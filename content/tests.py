@@ -11,7 +11,7 @@ feed is 400MB, and when a page is mostly navigation.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -20,7 +20,7 @@ from django.utils import timezone
 from core.models import Source
 from credibility.models import CredibilityScore, TrustTier
 
-from . import http, robots
+from . import corroborate, http, robots
 from .extract import extract_article, parse_datetime, strip_html
 from .feeds import FeedError, looks_like_feed, parse_feed
 from .fetchers import FeedStatus, WebFetcher
@@ -634,6 +634,234 @@ class CredibilityGateTests(TestCase):
         fake.assert_not_called()
         self.assertEqual(result['fetched'], 0)
         self.assertIn('below threshold', result['detail'])
+
+
+# ---------------------------------------------------------------------------
+# Corroboration
+# ---------------------------------------------------------------------------
+
+def stub_search(candidates, available=True, failed=()):
+    """A search backend returning exactly what a test wants."""
+    class _Stub(corroborate.BaseCorroborationSearch):
+        name = 'stub'
+
+        def search(self, terms, published_at, exclude_domain):
+            return corroborate.SearchOutcome(
+                [c for c in candidates if c.domain != exclude_domain],
+                available=available, failed=list(failed), searched='a stub index',
+            )
+    return _Stub()
+
+
+def candidate(domain, title, days_off=0, snippet=''):
+    return corroborate.Candidate(
+        url=f'https://{domain}/story',
+        title=title,
+        domain=domain,
+        snippet=snippet,
+        published_at=timezone.now() - timedelta(days=days_off),
+    )
+
+
+FLOOD_STORY = (
+    'Heavy rainfall across Mumbai closed three suburban rail lines on Friday. '
+    'The Brihanmumbai Municipal Corporation said pumping stations in Mumbai '
+    'were operating at capacity as flooding spread. Mumbai residents were told '
+    'to avoid low-lying roads while the flooding continued. '
+) * 4
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None)
+class CorroborationTests(TestCase):
+    def setUp(self):
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=70.0, trust_tier=TrustTier.HIGH
+        )
+        self.item = ContentItem.objects.create(
+            source=self.source,
+            url='https://examplenews.com/mumbai-floods',
+            title='Mumbai floods close three rail lines',
+            body=FLOOD_STORY,
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(self.item.pk)
+        self.item.refresh_from_db()
+
+    def _assess(self, backend):
+        with patch('content.corroborate.get_search', return_value=backend):
+            return corroborate.assess(self.item)
+
+    # -- keywords ----------------------------------------------------------
+
+    def test_keywords_describe_the_story(self):
+        keywords = [k.lower() for k in corroborate.query_terms(corroborate.terms_for(self.item))]
+        self.assertIn('mumbai', ' '.join(keywords))
+        self.assertTrue(
+            any('flood' in k or 'rail' in k or 'rain' in k for k in keywords),
+            f'expected a subject word among {keywords}',
+        )
+
+    def test_function_words_never_become_keywords(self):
+        # "about, like, what" as a search query finds nothing or everything.
+        keywords = [k.lower() for k in corroborate.query_terms(corroborate.terms_for(self.item))]
+        self.assertFalse({'about', 'like', 'what', 'said'} & set(keywords))
+
+    # -- the honest-failure rules -----------------------------------------
+
+    def test_a_failed_search_withholds_the_rating(self):
+        result = self._assess(stub_search([], available=False, failed=['stub']))
+        self.assertIsNone(result.score)
+        self.assertEqual(result.verdict, corroborate.Verdict.UNAVAILABLE)
+
+    def test_a_partial_search_finding_nothing_withholds_the_rating(self):
+        # The bug this guards against: one backend rate-limited, another
+        # returning nothing, reported together as a confident "uncorroborated".
+        result = self._assess(stub_search([], available=True, failed=['gdelt']))
+        self.assertIsNone(result.score)
+        self.assertEqual(result.verdict, corroborate.Verdict.UNAVAILABLE)
+        self.assertIn('gdelt', result.rationale)
+
+    def test_a_partial_search_that_finds_corroboration_still_rates(self):
+        # Asymmetry on purpose: evidence found is evidence found, even if we
+        # did not manage to look everywhere.
+        result = self._assess(stub_search(
+            [candidate('other.com', 'Mumbai floods shut rail lines after rainfall')],
+            available=True, failed=['gdelt'],
+        ))
+        self.assertIsNotNone(result.score)
+        self.assertGreater(result.independent_sources, 0)
+
+    def test_composite_reports_a_failed_backend_even_when_another_worked(self):
+        composite = corroborate.CompositeSearch(backends=[
+            stub_search([candidate('a.com', 'Mumbai floods')]),
+            stub_search([], available=False, failed=['gdelt']),
+        ])
+        outcome = composite.search(['Mumbai'], None, 'examplenews.com')
+        self.assertTrue(outcome.available)
+        self.assertIn('gdelt', outcome.failed)
+
+    # -- matching ----------------------------------------------------------
+
+    def test_matching_coverage_raises_the_rating(self):
+        alone = self._assess(stub_search([]))
+        backed = self._assess(stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines amid heavy rainfall'),
+            candidate('b.com', 'Rail lines shut as flooding hits Mumbai'),
+            candidate('c.com', 'Mumbai rainfall floods suburban rail network'),
+        ]))
+        self.assertGreater(backed.score, alone.score)
+        self.assertEqual(backed.independent_sources, 3)
+
+    def test_shared_vocabulary_alone_is_not_corroboration(self):
+        # No entity overlap: same words, unrelated story.
+        result = self._assess(stub_search([
+            candidate('a.com', 'Heavy rainfall expected across northern Europe'),
+        ]))
+        self.assertEqual(result.independent_sources, 0)
+
+    def test_an_old_story_does_not_corroborate_a_new_one(self):
+        result = self._assess(stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines', days_off=400),
+        ]))
+        self.assertEqual(result.independent_sources, 0)
+
+    def test_syndicated_copies_count_once(self):
+        # Forty mastheads running one wire story is one confirmation.
+        headline = 'Mumbai floods close three suburban rail lines after rainfall'
+        many = self._assess(stub_search([
+            candidate(f'outlet{n}.com', headline) for n in range(8)
+        ]))
+        self.assertEqual(many.independent_sources, 1)
+
+    def test_one_outlet_publishing_repeatedly_counts_once(self):
+        result = self._assess(stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines'),
+            candidate('a.com', 'Mumbai flooding: rainfall latest as rail lines shut'),
+        ]))
+        self.assertEqual(result.independent_sources, 1)
+
+    def test_the_source_itself_never_corroborates_itself(self):
+        result = self._assess(stub_search([
+            candidate('examplenews.com', 'Mumbai floods close three rail lines'),
+        ]))
+        self.assertEqual(result.independent_sources, 0)
+
+    # -- verdicts ----------------------------------------------------------
+
+    def test_being_first_is_not_untrustworthy(self):
+        # A well-rated outlet standing alone is uncorroborated, never
+        # "do not trust" — a scoop is not a lie.
+        result = self._assess(stub_search([]))
+        self.assertEqual(result.verdict, corroborate.Verdict.UNCORROBORATED)
+
+    def test_a_condemned_source_is_not_rehabilitated_by_keyword_matches(self):
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=15.0, trust_tier=TrustTier.LOW
+        )
+        result = self._assess(stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines'),
+            candidate('b.com', 'Flooding shuts Mumbai rail network'),
+        ]))
+        self.assertEqual(result.verdict, corroborate.Verdict.DO_NOT_TRUST)
+
+    def test_well_backed_story_from_a_good_source_reads_well(self):
+        result = self._assess(stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines after record rainfall'),
+            candidate('b.com', 'Flooding shuts Mumbai suburban rail network'),
+            candidate('c.com', 'Mumbai rainfall: rail lines closed as flooding spreads'),
+            candidate('d.com', 'Rail lines closed by Mumbai flooding'),
+        ]))
+        self.assertIn(result.verdict, (
+            corroborate.Verdict.TRUSTWORTHY, corroborate.Verdict.LIKELY_RELIABLE,
+        ))
+
+    def test_the_rating_never_leaves_the_scale(self):
+        result = self._assess(stub_search([
+            candidate(f'o{n}.com', f'Mumbai floods rail lines rainfall report {n}')
+            for n in range(30)
+        ]))
+        self.assertLessEqual(result.score, 10.0)
+        self.assertGreaterEqual(result.score, 0.0)
+
+    # -- persistence -------------------------------------------------------
+
+    def test_the_report_and_its_evidence_are_stored(self):
+        from .models import Corroboration
+        from .tasks import corroborate_item
+
+        with patch('content.corroborate.get_search', return_value=stub_search([
+            candidate('a.com', 'Mumbai floods close rail lines'),
+        ])):
+            report_id = corroborate_item.run(self.item.pk)
+
+        report = Corroboration.objects.get(pk=report_id)
+        self.assertEqual(report.matches.count(), 1)
+        self.assertTrue(report.keywords)
+        self.assertTrue(report.rationale)
+        self.assertEqual(report.engine_version, corroborate.ENGINE_VERSION)
+
+    def test_checks_are_a_log_not_an_overwrite(self):
+        from .models import Corroboration
+        from .tasks import corroborate_item
+
+        with patch('content.corroborate.get_search', return_value=stub_search([])):
+            corroborate_item.run(self.item.pk)
+            corroborate_item.run(self.item.pk)
+
+        reports = Corroboration.objects.filter(content_item=self.item)
+        self.assertEqual(reports.count(), 2)
+        # Newest first, so the check you just ran is the one you read.
+        self.assertGreaterEqual(reports[0].created_at, reports[1].created_at)
+
+
+class NullSearchTests(SimpleTestCase):
+    def test_disabled_search_reports_unavailable_not_empty(self):
+        # If it returned an empty *available* result, turning corroboration
+        # off would silently rate every story as uncorroborated.
+        outcome = corroborate.NullSearch().search(['x'], None, 'a.com')
+        self.assertFalse(outcome.available)
 
 
 class FetchUrlTests(TestCase):

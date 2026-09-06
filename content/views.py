@@ -2,13 +2,20 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
-from .models import ContentItem
+from .models import ContentItem, Corroboration
 from .serializers import (
     ContentItemSerializer,
+    CorroborationSerializer,
     FetchRequestSerializer,
     IngestRequestSerializer,
 )
-from .tasks import analyze_content, fetch_source, fetch_url, ingest_item
+from .tasks import (
+    analyze_content,
+    corroborate_item,
+    fetch_source,
+    fetch_url,
+    ingest_item,
+)
 
 
 class ContentItemViewSet(viewsets.ModelViewSet):
@@ -22,6 +29,19 @@ class ContentItemViewSet(viewsets.ModelViewSet):
     ordering_fields = ('published_at', 'created_at', 'analyzed_at')
 
     @action(detail=True, methods=['post'])
+    def corroborate(self, request, pk=None):
+        """POST /api/content/{id}/corroborate/ — cross-reference this story.
+
+        Runs inline: the caller is waiting on a rating, and a task id is not
+        an answer. It makes outbound search requests, so a few seconds is
+        normal.
+        """
+        item = self.get_object()
+        report_id = corroborate_item.run(item.pk)
+        report = Corroboration.objects.prefetch_related('matches').get(pk=report_id)
+        return Response(CorroborationSerializer(report).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
     def analyze(self, request, pk=None):
         """POST /api/content/{id}/analyze/ — re-run analysis on one item."""
         item = self.get_object()
@@ -30,6 +50,19 @@ class ContentItemViewSet(viewsets.ModelViewSet):
             {'task_id': async_result.id, 'content_item': item.pk, 'status': 'queued'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class CorroborationViewSet(viewsets.ReadOnlyModelViewSet):
+    """The log of credibility checks, newest first."""
+
+    queryset = (
+        Corroboration.objects
+        .select_related('content_item__source')
+        .prefetch_related('matches')
+    )
+    serializer_class = CorroborationSerializer
+    search_fields = ('content_item__title', 'content_item__source__domain', 'verdict')
+    ordering_fields = ('created_at', 'score')
 
 
 def _error(message, code):
@@ -65,8 +98,16 @@ def fetch(request):
             return _error(result['error'], status.HTTP_400_BAD_REQUEST)
 
         item = ContentItem.objects.get(pk=result['content_item'])
+        report = (
+            Corroboration.objects.prefetch_related('matches')
+            .filter(pk=result.get('corroboration')).first()
+        )
         return Response(
-            {**ContentItemSerializer(item).data, 'detail': result['detail']},
+            {
+                **ContentItemSerializer(item).data,
+                'detail': result['detail'],
+                'corroboration': CorroborationSerializer(report).data if report else None,
+            },
             status=status.HTTP_201_CREATED,
         )
 

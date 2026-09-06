@@ -162,11 +162,73 @@ back-off exists to restrain the schedule, not the analyst.
 Set `CONTENT_FETCHER=content.fetchers.NullFetcher` to contact nobody — the
 same switch `NullRegistryClient` gives Module 1.
 
+## Cross-referencing a story: the 0–10 rating
+
+Reading a page is only half the question. The other half is *does anyone else
+say this*. Every stored article can be checked against other outlets, which
+produces a rating out of 10 and a tag — TRUSTWORTHY, LIKELY RELIABLE,
+PARTIALLY CORROBORATED, UNCORROBORATED, DO NOT TRUST — logged newest-first in
+the console. Reading a page runs the check automatically.
+
+**This measures corroboration, not truth.** It asks whether independent
+outlets carried the same story. A widely repeated falsehood corroborates
+beautifully; a genuine scoop does not corroborate at all until everyone
+catches up. The tag is a summary of that measurement and is not a fact-check,
+so every report stores the keywords it searched, the outlets it found, their
+similarity, and the arithmetic that produced the number.
+
+Keywords come from the article's own entities and topics — an entity that also
+appears in the headline outranks one buried in paragraph forty, because proper
+nouns are what make a story findable. A Mumbai flooding report searches
+`Mumbai, floods, rail`; the query is capped at four terms because search
+backends AND them, and a long query returns nothing rather than something
+imperfect.
+
+Three backends run together: what we have already ingested, the **live feeds of
+other tracked outlets** (through the same robots-respecting fetcher), and
+**GDELT's DOC 2.0 API** — a free, key-less index of global news, chosen for the
+same reason Module 1 uses RDAP.
+
+### The three rules that keep it honest
+
+**A failed search is not a negative result.** GDELT rate-limits hard. If the
+lookup does not complete, the report carries no rating and says why. An early
+version got this wrong in a way worth recording: `CompositeSearch` reported
+itself available whenever *any* backend answered, and since the stored-item
+backend never fails and usually finds nothing, a rate-limited GDELT became a
+confident "3.4/10, uncorroborated" on a story that had never actually been
+cross-referenced. Availability is now asymmetric — finding corroboration is
+valid even if part of the search failed, but finding *none* is only meaningful
+if we looked everywhere.
+
+**Syndication is not corroboration.** Forty mastheads running one wire story
+is one confirmation, not forty. Near-identical headlines collapse into a
+single group before anything is counted, as do repeated follow-ups from one
+outlet.
+
+**Silence is not guilt.** An outlet Module 1 rates well being first to report
+something is tagged UNCORROBORATED, never DO NOT TRUST. That tag is reserved
+for a source Module 1 has already condemned — which conversely is not
+rehabilitated by a handful of keyword matches.
+
+Similarity is measured against the article's five strongest terms rather than
+all of them: most candidates are known only by their headline, and a headline
+cannot carry a dozen terms. Dividing by all of them scored genuinely matching
+coverage at 25% and discarded it.
+
+Set `CORROBORATION_SEARCH=content.corroborate.NullSearch` to disable it. That
+backend reports itself *unavailable* rather than empty, so switching it off
+can never be mistaken for evidence that nothing corroborates a story.
+
+Note on what is deliberately absent: Google News RSS search would widen this
+considerably, and Google's robots.txt disallows `/rss/search`. Module 2 does
+not get to obey robots.txt only when convenient.
+
 ### Testing it
 
-`content/tests.py` is 59 tests and **none of them touch the network**:
-everything outbound is behind `content.http.request`, so the tests replace it
-and drive the whole pipeline on canned bytes.
+`content/tests.py` is 78 tests and **none of them touch the network**:
+everything outbound is behind `content.http.request` or a search backend, so
+the tests replace those and drive the whole pipeline on canned data.
 
 ```bash
 .venv/Scripts/python.exe manage.py test content
@@ -174,8 +236,9 @@ and drive the whole pipeline on canned bytes.
 
 They cover the cases that are hard to check by eye — robots.txt returning 503,
 a redirect pointing at `127.0.0.1`, a feed declaring a DOCTYPE, an oversized
-body, a page that is mostly navigation, and a low-scoring source proving it is
-never contacted.
+body, a page that is mostly navigation, a low-scoring source proving it is
+never contacted, a partial search refusing to condemn, eight syndicated copies
+counting once, and a year-old story failing to corroborate a new one.
 
 ## Layout
 
@@ -193,6 +256,7 @@ content/          ContentItem, and the fetcher that fills it
   feeds.py        RSS/Atom
   fetchers.py     feed-first WebFetcher; NullFetcher is the offline switch
   pipeline.py     NER / topics / summary (heuristic stand-in)
+  corroborate.py  keyword search across other outlets -> a 0-10 rating
 social/           SocialAccount, InteractionEdge
 media/            MediaItem, TamperingResult
 reportgis/        GeoEvent (PostGIS PointField), Report — needs GDAL/GEOS
@@ -306,6 +370,8 @@ Smoke-test the worker:
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
 | `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
+| `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating and its evidence |
+| `GET /api/content/corroborations/` | JWT | the log of credibility checks, newest first |
 | `POST /api/content/ingest/` | JWT | submit a document you already have; 409 if the gate rejects it |
 | `POST /api/content/{id}/analyze/` | JWT | re-run analysis |
 | `GET /api/social/accounts/` | JWT | accounts with bot-likelihood and coordination scores |

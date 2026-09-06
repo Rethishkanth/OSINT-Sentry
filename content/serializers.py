@@ -1,6 +1,40 @@
 from rest_framework import serializers
 
-from .models import ContentItem, ContentTopic, Entity
+from .models import (
+    ContentItem,
+    ContentTopic,
+    Corroboration,
+    CorroborationMatch,
+    Entity,
+)
+
+
+class CorroborationMatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CorroborationMatch
+        fields = (
+            'id', 'domain', 'url', 'title', 'similarity', 'matched_terms',
+            'credibility', 'published_at',
+        )
+
+
+class CorroborationSerializer(serializers.ModelSerializer):
+    """A credibility check, with the evidence behind it."""
+
+    matches = CorroborationMatchSerializer(many=True, read_only=True)
+    verdict_label = serializers.CharField(source='get_verdict_display', read_only=True)
+    content_title = serializers.CharField(source='content_item.title', read_only=True)
+    content_url = serializers.CharField(source='content_item.url', read_only=True)
+    source_domain = serializers.CharField(source='content_item.source.domain', read_only=True)
+
+    class Meta:
+        model = Corroboration
+        fields = (
+            'id', 'content_item', 'content_title', 'content_url', 'source_domain',
+            'score', 'verdict', 'verdict_label', 'keywords', 'rationale',
+            'searched', 'sources_checked', 'independent_sources',
+            'engine_version', 'matches', 'created_at',
+        )
 
 
 class EntitySerializer(serializers.ModelSerializer):

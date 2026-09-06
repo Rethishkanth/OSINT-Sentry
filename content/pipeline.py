@@ -21,7 +21,11 @@ from dataclasses import dataclass, field
 from django.conf import settings
 from django.utils.module_loading import import_string
 
-# Words that start a sentence and would otherwise look like a proper noun.
+# Words that start a sentence and would otherwise look like a proper noun,
+# plus the function words that dominate any term-frequency count. Both uses
+# matter downstream: content.corroborate builds its search query out of the
+# entities and topics produced here, and a query of "about, like, what"
+# finds either nothing or everything.
 STOPWORDS = {
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'this', 'that',
     'these', 'those', 'it', 'its', 'he', 'she', 'they', 'we', 'you', 'i',
@@ -29,9 +33,24 @@ STOPWORDS = {
     'was', 'were', 'be', 'been', 'has', 'have', 'had', 'will', 'would',
     'can', 'could', 'should', 'after', 'before', 'while', 'when', 'where',
     'his', 'her', 'their', 'our', 'said', 'says', 'according',
+    'about', 'like', 'what', 'who', 'whom', 'whose', 'why', 'how', 'which',
+    'there', 'here', 'them', 'him', 'us', 'me', 'my', 'your', 'yours',
+    'also', 'just', 'than', 'into', 'over', 'under', 'out', 'off', 'up',
+    'down', 'again', 'once', 'very', 'much', 'many', 'more', 'most', 'some',
+    'any', 'all', 'both', 'each', 'few', 'other', 'such', 'only', 'own',
+    'same', 'so', 'too', 'not', 'no', 'nor', 'do', 'does', 'did', 'done',
+    'being', 'am', 'are', 'may', 'might', 'must', 'shall', 'get', 'got',
+    'go', 'went', 'come', 'came', 'make', 'made', 'take', 'took', 'know',
+    'knew', 'think', 'thought', 'see', 'saw', 'want', 'well', 'still',
+    'even', 'back', 'now', 'new', 'one', 'two', 'first', 'last', 'because',
+    'through', 'during', 'between', 'against', 'without', 'within', 'per',
 }
 
-PROPER_NOUN_RE = re.compile(r'\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*)\b')
+# Deliberately a literal space rather than \s: `\s+` spans newlines, which
+# joined a headline to the next block and produced "entities" like
+# "Online\n\nAdvertisement". Capitalised words on separate lines are two
+# things, not one name.
+PROPER_NOUN_RE = re.compile(r'\b([A-Z][a-z]{2,}(?:[ ]+[A-Z][a-z]{2,})*)\b')
 SENTENCE_RE = re.compile(r'(?<=[.!?])\s+')
 WORD_RE = re.compile(r"[a-z][a-z'-]{3,}")
 

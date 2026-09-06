@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TimeStampedModel
@@ -91,6 +92,80 @@ class Topic(models.Model):
 
     def __str__(self):
         return self.label
+
+
+class Corroboration(TimeStampedModel):
+    """One credibility check of a ContentItem against other outlets.
+
+    Kept as a log rather than a field on ContentItem: a check made when a
+    story broke and one made a day later are different findings, and the
+    earlier one should not be silently overwritten by the later.
+    """
+
+    class Verdict(models.TextChoices):
+        TRUSTWORTHY = 'trustworthy', 'Trustworthy'
+        LIKELY_RELIABLE = 'likely_reliable', 'Likely reliable'
+        PARTIALLY_CORROBORATED = 'partially_corroborated', 'Partially corroborated'
+        UNCORROBORATED = 'uncorroborated', 'Uncorroborated'
+        DO_NOT_TRUST = 'do_not_trust', 'Do not trust'
+        UNAVAILABLE = 'unavailable', 'Could not check'
+
+    content_item = models.ForeignKey(
+        ContentItem,
+        on_delete=models.CASCADE,
+        related_name='corroborations',
+    )
+    # Null when the search itself failed. A rating is withheld rather than
+    # guessed, because "we could not look" must not read as "nobody agrees".
+    score = models.FloatField(
+        null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+        help_text='0-10, how well other outlets corroborate this story.',
+    )
+    verdict = models.CharField(
+        max_length=32, choices=Verdict.choices, default=Verdict.UNAVAILABLE, db_index=True
+    )
+    keywords = models.JSONField(default=list, blank=True)
+    rationale = models.TextField(blank=True)
+    searched = models.CharField(max_length=255, blank=True)
+    sources_checked = models.PositiveIntegerField(default=0)
+    independent_sources = models.PositiveIntegerField(default=0)
+    engine_version = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        # Newest first: the check you just ran is the one you want to read.
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['content_item', '-created_at'])]
+
+    def __str__(self):
+        rating = f'{self.score:.1f}/10' if self.score is not None else 'no rating'
+        return f'{self.content_item}: {rating} ({self.verdict})'
+
+
+class CorroborationMatch(models.Model):
+    """One other outlet's coverage that matched, kept as the evidence."""
+
+    report = models.ForeignKey(
+        Corroboration, on_delete=models.CASCADE, related_name='matches'
+    )
+    source = models.ForeignKey(
+        'core.Source', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='corroboration_matches',
+        help_text='Set only when the matching outlet is one we already track.',
+    )
+    domain = models.CharField(max_length=255)
+    url = models.URLField(max_length=1000)
+    title = models.CharField(max_length=500, blank=True)
+    similarity = models.FloatField(default=0.0)
+    matched_terms = models.JSONField(default=list, blank=True)
+    credibility = models.FloatField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-similarity']
+
+    def __str__(self):
+        return f'{self.domain} ({self.similarity:.0%})'
 
 
 class ContentTopic(models.Model):

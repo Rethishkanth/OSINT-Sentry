@@ -13,7 +13,14 @@ from credibility.tasks import refresh_domain_registration, score_source
 
 from .fetchers import fetch_page, get_fetcher
 from .http import Blocked, FetchError, assert_fetchable
-from .models import ContentItem, ContentTopic, Entity, Topic
+from .models import (
+    ContentItem,
+    ContentTopic,
+    Corroboration,
+    CorroborationMatch,
+    Entity,
+    Topic,
+)
 from .pipeline import get_analyzer
 
 logger = logging.getLogger(__name__)
@@ -179,6 +186,70 @@ def _store(source, fetched, inline: bool):
 
 
 @shared_task
+def corroborate_item(content_item_id):
+    """Cross-reference one stored article against other outlets.
+
+    Returns the Corroboration id. The report is always written, including
+    when the search failed — a check that could not complete is a finding an
+    analyst needs to see, not one to hide.
+    """
+    from .corroborate import assess
+
+    try:
+        item = ContentItem.objects.select_related('source').get(pk=content_item_id)
+    except ObjectDoesNotExist:
+        logger.warning('corroborate_item: ContentItem %s no longer exists', content_item_id)
+        return None
+
+    # Corroboration runs on entities and topics, so an unanalysed item has
+    # nothing to search with. Analyse it now rather than rating it on a
+    # headline alone.
+    if item.status != ContentItem.Status.ANALYZED:
+        analyze_content.run(item.pk)
+        item.refresh_from_db()
+
+    result = assess(item)
+
+    with transaction.atomic():
+        report = Corroboration.objects.create(
+            content_item=item,
+            score=result.score,
+            verdict=result.verdict,
+            keywords=result.keywords,
+            rationale=result.rationale,
+            searched=result.searched[:255],
+            sources_checked=result.sources_checked,
+            independent_sources=result.independent_sources,
+            engine_version=result.engine_version,
+        )
+        tracked = {
+            s.domain: s for s in Source.objects.filter(
+                domain__in=[m.domain for m in result.matches]
+            )
+        }
+        CorroborationMatch.objects.bulk_create(
+            CorroborationMatch(
+                report=report,
+                source=tracked.get(match.domain),
+                domain=match.domain[:255],
+                url=match.url[:1000],
+                title=(match.title or '')[:500],
+                similarity=match.similarity,
+                matched_terms=match.matched_terms,
+                credibility=match.credibility,
+                published_at=match.published_at,
+            )
+            for match in result.matches
+        )
+
+    logger.info(
+        'Corroborated ContentItem %s: %s (%s independent outlet(s))',
+        item.pk, result.headline, result.independent_sources,
+    )
+    return report.pk
+
+
+@shared_task
 def fetch_source(source_id, inline=False, force=False):
     """Crawl one source's feed and ingest whatever is new.
 
@@ -296,13 +367,21 @@ def fetch_url(url, inline=True):
     item_id = _store(source, fetched, inline=True)
     if item_id is None:
         return {'error': 'Rejected by the credibility gate.', 'source': source.pk}
+
+    report_id = None
     if inline:
         analyze_content.run(item_id)
+        # Reading a page is someone asking "is this true?". Answering with a
+        # stored document and no assessment would be answering a different
+        # question, so the cross-reference runs as part of the same action.
+        report_id = corroborate_item.run(item_id)
+
     return {
         'source': source.pk,
         'source_domain': domain,
         'source_created': created,
         'content_item': item_id,
+        'corroboration': report_id,
         'detail': f'Read {len(fetched.body)} characters from {fetched.url}.',
     }
 
