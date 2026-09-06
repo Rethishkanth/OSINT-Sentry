@@ -18,6 +18,43 @@ class SourceViewSet(viewsets.ModelViewSet):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def api_root(request):
+    """Index for the bare hostname.
+
+    Django serves the API only, so hitting / in a browser used to 404 with no
+    hint that the console lives on a different port. This says where to go.
+    """
+    from django.apps import apps as django_apps
+    from django.conf import settings
+
+    def url(path):
+        return request.build_absolute_uri(path)
+
+    endpoints = {
+        'health': url('/api/health/'),
+        'obtain_token': url('/api/auth/token/'),
+        'refresh_token': url('/api/auth/token/refresh/'),
+        'overview': url('/api/overview/'),
+        'sources': url('/api/sources/'),
+        'credibility': url('/api/credibility/'),
+        'content': url('/api/content/'),
+        'social': url('/api/social/'),
+        'media': url('/api/media/'),
+    }
+    if django_apps.is_installed('reportgis'):
+        endpoints['reportgis'] = url('/api/reportgis/')
+
+    return Response({
+        'service': 'osint-sentry',
+        'detail': 'This is the API backend. The analyst console runs separately.',
+        'console': settings.FRONTEND_URL,
+        'admin': url('/admin/'),
+        'endpoints': endpoints,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def health(request):
     """Unauthenticated liveness check, also used by the frontend smoke test."""
     return Response({'status': 'ok', 'service': 'osint-sentry'})

@@ -10,12 +10,15 @@ from django.http import JsonResponse
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from core.views import api_root
+
 
 def api_hello(request):
     return JsonResponse({"message": "Hello from Django"})
 
 
 urlpatterns = [
+    path('', api_root, name='api-root'),
     path('admin/', admin.site.urls),
     path('api/hello/', api_hello),
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

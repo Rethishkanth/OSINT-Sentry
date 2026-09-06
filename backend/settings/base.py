@@ -275,3 +275,8 @@ SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.Heuristi
 
 # Sources scoring below this are not ingested from at all.
 CONTENT_MIN_CREDIBILITY = env.float('CONTENT_MIN_CREDIBILITY', default=25.0)
+
+
+# Where the analyst console is served from. Django hosts the API only, so the
+# API root points visitors here rather than 404ing on /.
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')

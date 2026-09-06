@@ -118,6 +118,11 @@ SELECT PostGIS_version();
 cd frontend && npm run dev
 ```
 
+**The console is <http://localhost:5173> — not `:8000`.** Django serves the API
+only; `:8000` is the backend, and its root just points back here. The Vite port
+is pinned with `strictPort`, so if 5173 is taken the dev server fails loudly
+instead of quietly moving to 5174.
+
 ```bash
 .venv/Scripts/celery.exe -A backend worker -l info --pool=solo
 ```
@@ -134,6 +139,7 @@ Smoke-test the worker:
 
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
+| `GET /` | none | API index — endpoint map and the console's address |
 | `GET /api/health/` | none | liveness check |
 | `POST /api/auth/token/` | none | obtain JWT access/refresh pair |
 | `POST /api/auth/token/refresh/` | none | refresh access token |
