@@ -81,6 +81,22 @@ publishing; a miner is not a monetisation choice anyone discloses.
 rather than a bad one — the same rule as a failed registry lookup, and the
 same rule the corroboration engine follows.
 
+### Clearing the safety log
+
+**Clear log** on the Site safety panel empties the view. It sets a `cleared_at`
+flag rather than deleting rows, so:
+
+- nothing is destroyed — **Show cleared** reads the archive back, and
+  **Restore** returns it to the live log;
+- the **Assessment log** is a different table and is not touched, so a site
+  whose inspections were cleared still has every credibility assessment it
+  ever had;
+- the site is still a tracked source, still scored, still crawlable.
+
+An analyst emptying a view is saying "I have read these", not "destroy the
+evidence" and certainly not "forget the site" — so clearing costs nothing but
+the view.
+
 ### Two things it is not
 
 It is **not a malware scanner**. It does not detect exploit kits, phishing, or
@@ -438,7 +454,9 @@ Smoke-test the worker:
 | `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
 | `POST /api/credibility/inspect/` | JWT | inspect a site; returns a 0–10 safety rating and its evidence |
-| `GET /api/credibility/inspections/` | JWT | the log of site inspections, newest first |
+| `GET /api/credibility/inspections/` | JWT | the log of site inspections, newest first (`?cleared=1` for the archive, `?cleared=all` for both) |
+| `POST /api/credibility/inspections/clear/` | JWT | hide the safety log; optional `source` clears one site |
+| `POST /api/credibility/inspections/restore/` | JWT | undo a clear |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
 | `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
 | `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating and its evidence |

@@ -90,9 +90,23 @@ class SiteInspection(TimeStampedModel):
     uses_https = models.BooleanField(default=False)
     engine_version = models.CharField(max_length=64, blank=True)
 
+    # Set when an analyst clears the safety log. A flag rather than a DELETE:
+    # this is observed evidence about a site at a point in time, and "I don't
+    # want to look at it any more" is not a reason to destroy it. Clearing
+    # touches nothing else — the Source and its credibility assessments are
+    # separate rows and stay exactly where they were.
+    cleared_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text='Hidden from the safety log. The record itself is kept.',
+    )
+
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['source', '-created_at'])]
+
+    @property
+    def is_cleared(self):
+        return self.cleared_at is not None
 
     def __str__(self):
         rating = f'{self.score:.1f}/10' if self.score is not None else 'no rating'

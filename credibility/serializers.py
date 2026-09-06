@@ -17,8 +17,18 @@ class SiteInspectionSerializer(serializers.ModelSerializer):
             'id', 'source', 'source_domain', 'score', 'rating', 'rating_label',
             'summary', 'reasons', 'findings', 'checked_url', 'ad_networks',
             'trackers', 'uses_https', 'engine_version', 'created_at',
+            'cleared_at',
         )
         read_only_fields = fields
+
+
+class ClearInspectionsSerializer(serializers.Serializer):
+    """Body for the clear/restore actions on the safety log."""
+
+    source = serializers.PrimaryKeyRelatedField(
+        queryset=Source.objects.all(), required=False, allow_null=True,
+        help_text='Clear one site only. Omit to clear the whole log.',
+    )
 
 
 class CredibilityScoreSerializer(serializers.ModelSerializer):

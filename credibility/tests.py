@@ -295,3 +295,91 @@ class InspectSiteTaskTests(TestCase):
             inspect_site.run(source.pk)
 
         self.assertFalse(CredibilityScore.objects.filter(source=source).exists())
+
+
+class ClearSafetyLogTests(TestCase):
+    """Clearing the safety log must not cost anything else.
+
+    An analyst emptying a view is saying "I have read these", not "destroy the
+    evidence" — and certainly not "forget the site". So the rows are flagged
+    rather than deleted, and the source and its assessment log are untouched.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.client.force_authenticate(get_user_model().objects.create_user('an'))
+        self.source = Source.objects.create(domain='example.com')
+
+    def _inspect(self, page=CLEAN_PAGE):
+        from .tasks import inspect_site
+
+        with patch('content.http.request', side_effect=serving({'https://example.com/': page})), \
+             patch('content.robots.check'), \
+             patch('credibility.inspection.inspect_certificate', return_value=GOOD_CERT):
+            return inspect_site.run(self.source.pk)
+
+    def _log(self, params=''):
+        response = self.client.get(f'/api/credibility/inspections/{params}')
+        self.assertEqual(response.status_code, 200)
+        return response.json()['results']
+
+    def test_clearing_empties_the_log_without_deleting_anything(self):
+        self._inspect()
+        self._inspect()
+        self.assertEqual(len(self._log()), 2)
+
+        response = self.client.post('/api/credibility/inspections/clear/', {})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['cleared'], 2)
+
+        self.assertEqual(self._log(), [])
+        # Hidden, not gone.
+        self.assertEqual(SiteInspection.objects.count(), 2)
+        self.assertEqual(len(self._log('?cleared=1')), 2)
+
+    def test_clearing_leaves_the_source_and_its_assessments_alone(self):
+        from .models import CredibilityScore, TrustTier
+
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=61.0, trust_tier=TrustTier.MEDIUM,
+        )
+        self._inspect()
+        self.client.post('/api/credibility/inspections/clear/', {})
+
+        self.assertTrue(Source.objects.filter(pk=self.source.pk).exists())
+        self.assertEqual(CredibilityScore.objects.filter(source=self.source).count(), 1)
+        assessments = self.client.get('/api/credibility/').json()['results']
+        self.assertEqual([a['source_domain'] for a in assessments], ['example.com'])
+
+    def test_a_new_inspection_after_a_clear_shows_up(self):
+        self._inspect()
+        self.client.post('/api/credibility/inspections/clear/', {})
+        self._inspect()
+
+        rows = self._log()
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]['cleared_at'])
+
+    def test_clearing_one_site_leaves_the_others(self):
+        other = Source.objects.create(domain='other.test')
+        self._inspect()
+        SiteInspection.objects.create(source=other, rating=SiteInspection.Rating.SAFE)
+
+        response = self.client.post(
+            '/api/credibility/inspections/clear/', {'source': other.pk},
+        )
+        self.assertEqual(response.json()['cleared'], 1)
+
+        domains = [r['source_domain'] for r in self._log()]
+        self.assertEqual(domains, ['example.com'])
+
+    def test_a_clear_can_be_undone(self):
+        self._inspect()
+        self.client.post('/api/credibility/inspections/clear/', {})
+        response = self.client.post('/api/credibility/inspections/restore/', {})
+
+        self.assertEqual(response.json()['restored'], 1)
+        self.assertEqual(len(self._log()), 1)

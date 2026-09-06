@@ -36,9 +36,9 @@ class CredibilityScoreAdmin(admin.ModelAdmin):
 class SiteInspectionAdmin(admin.ModelAdmin):
     list_display = (
         'source', 'rating_out_of_ten', 'rating', 'ad_networks', 'trackers',
-        'uses_https', 'engine_version', 'created_at',
+        'uses_https', 'engine_version', 'created_at', 'cleared_at',
     )
-    list_filter = ('rating', 'uses_https', 'engine_version')
+    list_filter = ('rating', 'uses_https', 'engine_version', 'cleared_at')
     search_fields = ('source__domain', 'summary')
     autocomplete_fields = ('source',)
     date_hierarchy = 'created_at'

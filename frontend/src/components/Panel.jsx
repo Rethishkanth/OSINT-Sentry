@@ -6,7 +6,7 @@ import { useCallback, useRef } from 'react'
  * The gradient position is written to CSS custom properties on the element,
  * so the highlight follows the cursor without re-rendering children.
  */
-export default function Panel({ title, tag, children, className = '' }) {
+export default function Panel({ title, tag, actions, children, className = '' }) {
   const ref = useRef(null)
 
   const onMove = useCallback((event) => {
@@ -23,6 +23,14 @@ export default function Panel({ title, tag, children, className = '' }) {
         <h2 className="panel-title">
           {title}
           {tag && <span className="tag">{tag}</span>}
+          {/* Sits after the tag, which carries the margin-left:auto that
+              pushes both to the right edge. Centred rather than baselined
+              so buttons line up with the rule under the title. */}
+          {actions && (
+            <span style={{ alignSelf: 'center', marginLeft: tag ? 0 : 'auto' }}>
+              {actions}
+            </span>
+          )}
         </h2>
       )}
       {children}

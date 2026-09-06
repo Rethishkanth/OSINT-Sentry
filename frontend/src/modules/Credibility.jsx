@@ -23,11 +23,59 @@ function localTime(iso) {
 }
 
 /** The log of site safety inspections. Newest first. */
-function SiteSafety({ inspections }) {
+function SiteSafety({ inspections, showCleared, onToggleCleared, onClear, clearing }) {
   const [openId, setOpenId] = useState(null)
+  const [confirming, setConfirming] = useState(false)
 
   return (
-    <Panel title="Site safety" tag="NEWEST FIRST">
+    <Panel
+      title="Site safety"
+      tag={showCleared ? 'CLEARED' : 'NEWEST FIRST'}
+      actions={
+        // Kept to two short buttons: the panel title is uppercase and widely
+        // letter-spaced, so a third control wrapped the heading onto two lines.
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', whiteSpace: 'nowrap' }}>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => { setConfirming(false); onToggleCleared() }}
+          >
+            {showCleared ? 'Back to log' : 'Show cleared'}
+          </button>
+          {!showCleared && (
+            confirming ? (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={clearing}
+                  onClick={async () => { await onClear(); setConfirming(false) }}
+                >
+                  {clearing ? 'Clearing…' : 'Confirm'}
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => setConfirming(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={!inspections.rows.length}
+                onClick={() => setConfirming(true)}
+                title="Hide these inspections. Nothing is deleted."
+              >
+                Clear log
+              </button>
+            )
+          )}
+        </div>
+      }
+    >
       <div className="notice" style={{ marginBottom: 12 }}>
         <b>This inspects what the site serves, not whether it is malicious.</b>{' '}
         Transport security, certificate, response headers, advertising,
@@ -35,7 +83,26 @@ function SiteSafety({ inspections }) {
         JavaScript — anything injected at runtime is not counted.
       </div>
 
-      <DataState {...inspections} empty="No sites inspected yet">
+      {confirming && !showCleared && (
+        <div className="notice" style={{ marginBottom: 12 }}>
+          <b>Clear the safety log?</b> The {inspections.rows.length} inspection(s)
+          below are hidden, not deleted — <b>Show cleared</b> reads them back.
+          The sites stay tracked and keep every entry in the assessment log.
+        </div>
+      )}
+
+      {showCleared && (
+        <div className="notice" style={{ marginBottom: 12 }}>
+          <b>Cleared inspections.</b> Kept, not deleted — clearing hides the
+          safety log and changes nothing else. Every site below is still a
+          tracked source and still has its full assessment log.
+        </div>
+      )}
+
+      <DataState
+        {...inspections}
+        empty={showCleared ? 'Nothing has been cleared' : 'No sites inspected yet'}
+      >
         <div className="table-wrap">
           <table>
             <thead>
@@ -316,14 +383,38 @@ function AddSource({ onResolved }) {
 export default function Credibility() {
   const scores = useApiList('/api/credibility/?ordering=-created_at')
   const sources = useApiList('/api/sources/')
-  const inspections = useApiList('/api/credibility/inspections/?ordering=-created_at')
+  const [showCleared, setShowCleared] = useState(false)
+  const inspections = useApiList(
+    `/api/credibility/inspections/?ordering=-created_at${showCleared ? '&cleared=1' : ''}`,
+  )
   const [busy, setBusy] = useState(null)
   const [inspecting, setInspecting] = useState(null)
+  const [clearing, setClearing] = useState(false)
   const [note, setNote] = useState(null)
+
+  async function clearInspections() {
+    setClearing(true)
+    setNote(null)
+    try {
+      const result = await apiFetch('/api/credibility/inspections/clear/', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+      await inspections.reload()
+      setNote(result.detail)
+    } catch (err) {
+      setNote(err.message)
+    } finally {
+      setClearing(false)
+    }
+  }
 
   async function inspect(sourceId) {
     setInspecting(sourceId)
     setNote(null)
+    // A new inspection belongs to the live log; leave the archive view so the
+    // result the analyst just asked for is the one on screen.
+    setShowCleared(false)
     try {
       const result = await apiFetch('/api/credibility/inspect/', {
         method: 'POST',
@@ -382,7 +473,10 @@ export default function Credibility() {
           <div className="metric-label">Scored high or verified</div>
         </Panel>
         <Panel title="Latest inspection" tag="SITE SAFETY">
-          {inspections.rows.length ? (
+          {/* While the cleared view is open the rows below are the archive,
+              not the live log — reporting one of them as "latest" would be
+              wrong. */}
+          {inspections.rows.length && !showCleared ? (
             <>
               <TenPointRating
                 score={inspections.rows[0].score}
@@ -398,7 +492,9 @@ export default function Credibility() {
           ) : (
             <>
               <div className="metric">—</div>
-              <div className="metric-label">No site inspected yet</div>
+              <div className="metric-label">
+                {showCleared ? 'Viewing cleared log' : 'No site inspected yet'}
+              </div>
             </>
           )}
         </Panel>
@@ -424,7 +520,13 @@ export default function Credibility() {
 
       <div style={{ height: 16 }} />
 
-      <SiteSafety inspections={inspections} />
+      <SiteSafety
+        inspections={inspections}
+        showCleared={showCleared}
+        onToggleCleared={() => setShowCleared((v) => !v)}
+        onClear={clearInspections}
+        clearing={clearing}
+      />
 
       <div style={{ height: 16 }} />
 
