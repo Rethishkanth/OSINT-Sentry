@@ -273,7 +273,7 @@ function DomainAge({ days }) {
 }
 
 /** Submit a website — a pasted article URL or a bare domain — for scoring. */
-function AddSource({ onResolved }) {
+function AddSource({ onResolved, onInspect }) {
   const [value, setValue] = useState('')
   const [state, setState] = useState({ phase: 'idle', message: null })
   // Kept in a ref so an unmount mid-poll cannot set state on a dead component.
@@ -290,32 +290,25 @@ function AddSource({ onResolved }) {
   async function awaitLookup(id, domain) {
     for (let i = 0; i < POLL_ATTEMPTS; i += 1) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-      if (!live.current) return
+      if (!live.current) return ''
       let row
       try {
         row = await apiFetch(`/api/sources/${id}/`)
       } catch {
         continue // a transient read failure should not end the wait
       }
-      if (!live.current) return
+      if (!live.current) return ''
       if (row.registry_status) {
         onResolved()
-        setState({
-          phase: 'done',
-          message: row.domain_age_days === null
-            ? `${domain}: registry returned “${row.registry_status}” — scored with age unknown.`
-            : `${domain}: registered ${Math.floor(row.domain_age_days / 365)} years ago. Scored.`,
-        })
-        return
+        return row.domain_age_days === null
+          ? `${domain}: registry returned “${row.registry_status}” — scored with age unknown.`
+          : `${domain}: registered ${Math.floor(row.domain_age_days / 365)} years ago.`
       }
     }
     // Not an error — the row exists, the answer just has not landed yet.
     onResolved()
-    setState({
-      phase: 'done',
-      message: `${domain} added. The registry lookup is still running — `
-        + 'reload in a moment, or check the Celery worker is up.',
-    })
+    return `${domain} added. The registry lookup is still running — `
+      + 'reload in a moment, or check the Celery worker is up.'
   }
 
   async function submit(event) {
@@ -331,8 +324,23 @@ function AddSource({ onResolved }) {
       })
       setValue('')
       onResolved()
-      setState({ phase: 'working', message: result.detail })
-      await awaitLookup(result.id, result.domain)
+      setState({ phase: 'working', message: `${result.detail} Inspecting the site…` })
+
+      // Registration metadata and the safety inspection answer different
+      // halves of "check this website", and neither waits on the other — so
+      // run them together rather than making the person sit through both in
+      // turn. Without the inspection this panel scored a site and left the
+      // safety log empty, which reads as the log being broken.
+      const [registry, safety] = await Promise.all([
+        awaitLookup(result.id, result.domain),
+        onInspect(result.id),
+      ])
+      if (!live.current) return
+      // Both halves name the domain, which reads as a stutter once they are
+      // one sentence — the first mention is enough.
+      const prefix = `${result.domain}: `
+      const tail = safety.startsWith(prefix) ? safety.slice(prefix.length) : safety
+      setState({ phase: 'done', message: [registry, tail].filter(Boolean).join(' ') })
     } catch (err) {
       if (live.current) setState({ phase: 'error', message: err.message })
     }
@@ -366,6 +374,8 @@ function AddSource({ onResolved }) {
       <div className="mono-dim" style={{ marginTop: 10 }}>
         Paste a full link or a bare domain — it is reduced to the registrable
         domain, so a BBC article and news.bbc.co.uk both resolve to bbc.co.uk.
+        The site is scored from its registration and inspected for safety in
+        one go; both results land in the logs below.
       </div>
 
       {state.message && (
@@ -409,25 +419,37 @@ export default function Credibility() {
     }
   }
 
-  async function inspect(sourceId) {
+  /** Inspect one site and put the result at the top of the safety log.
+   *  Returns the one-line summary so a caller can fold it into its own status
+   *  message; pass `announce: false` when the caller shows that summary
+   *  itself, or it appears twice on screen. Failure is reported through
+   *  `note` rather than thrown, so one failed inspection cannot swallow a
+   *  caller's other results. */
+  async function inspect(sourceId, { announce = true } = {}) {
     setInspecting(sourceId)
     setNote(null)
     // A new inspection belongs to the live log; leave the archive view so the
     // result the analyst just asked for is the one on screen.
+    const wasCleared = showCleared
     setShowCleared(false)
     try {
       const result = await apiFetch('/api/credibility/inspect/', {
         method: 'POST',
         body: JSON.stringify({ source: sourceId }),
       })
-      await inspections.reload()
-      setNote(
-        result.score === null
-          ? `${result.source_domain}: ${result.rating_label}. ${result.summary}`
-          : `${result.source_domain}: ${result.score.toFixed(1)}/10 — ${result.rating_label}. ${result.summary}`,
-      )
+      // Leaving the archive view already refetches the live log. Calling
+      // reload() as well would refetch the *cleared* path this render closed
+      // over, and whichever landed last would win — sometimes hiding the
+      // inspection just asked for behind the archive it replaced.
+      if (!wasCleared) await inspections.reload()
+      const message = result.score === null
+        ? `${result.source_domain}: ${result.rating_label}. ${result.summary}`
+        : `${result.source_domain}: ${result.score.toFixed(1)}/10 — ${result.rating_label}. ${result.summary}`
+      if (announce) setNote(message)
+      return message
     } catch (err) {
       setNote(err.message)
+      return ''
     } finally {
       setInspecting(null)
     }
@@ -516,6 +538,7 @@ export default function Credibility() {
 
       <AddSource
         onResolved={() => { scores.reload(); sources.reload() }}
+        onInspect={(id) => inspect(id, { announce: false })}
       />
 
       <div style={{ height: 16 }} />
@@ -538,6 +561,39 @@ export default function Credibility() {
         from one created in 1994. It carries no information about whether the
         content is accurate, so metadata alone is capped below the VERIFIED tier.
       </div>
+
+      <Panel title="Assessment log" tag="PROVENANCE TRACKED">
+        <DataState {...scores} empty="No assessments yet">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Score</th>
+                  <th>Tier</th>
+                  <th>Model</th>
+                  <th>Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scores.rows.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.source_domain}</td>
+                    <td style={{ minWidth: 140 }}>
+                      <ScoreBar value={s.credibility_score} max={100} />
+                    </td>
+                    <td><Badge value={s.trust_tier} /></td>
+                    <td className="mono-dim">{s.model_version}</td>
+                    <td className="mono-dim" style={{ maxWidth: 380 }}>{s.rationale}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataState>
+      </Panel>
+
+      <div style={{ height: 16 }} />
 
       <Panel title="Sources" tag="TRIGGER SCORING">
         <DataState {...sources} empty="No sources registered">
@@ -591,39 +647,6 @@ export default function Credibility() {
                         {inspecting === s.id ? 'Inspecting…' : 'Inspect site'}
                       </button>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </DataState>
-      </Panel>
-
-      <div style={{ height: 16 }} />
-
-      <Panel title="Assessment log" tag="PROVENANCE TRACKED">
-        <DataState {...scores} empty="No assessments yet">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Source</th>
-                  <th>Score</th>
-                  <th>Tier</th>
-                  <th>Model</th>
-                  <th>Rationale</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scores.rows.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.source_domain}</td>
-                    <td style={{ minWidth: 140 }}>
-                      <ScoreBar value={s.credibility_score} max={100} />
-                    </td>
-                    <td><Badge value={s.trust_tier} /></td>
-                    <td className="mono-dim">{s.model_version}</td>
-                    <td className="mono-dim" style={{ maxWidth: 380 }}>{s.rationale}</td>
                   </tr>
                 ))}
               </tbody>
