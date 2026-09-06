@@ -47,13 +47,18 @@ def refresh_domain_registration(source_id, force=False):
 
     info = get_registry_client().lookup(source.domain)
 
-    Source.objects.filter(pk=source.pk).update(
-        domain_registered_at=info.registered_at or source.domain_registered_at,
-        registrar=info.registrar or source.registrar,
-        registry_status=info.status,
-        registry_checked_at=timezone.now(),
-        updated_at=timezone.now(),
-    )
+    # Saved through the instance rather than with a queryset .update() so the
+    # post_save signal fires. Registration data is the evidence a credibility
+    # score is computed from, so a change to it belongs in the audit log —
+    # otherwise a score can move with no record of what moved it.
+    source.domain_registered_at = info.registered_at or source.domain_registered_at
+    source.registrar = info.registrar or source.registrar
+    source.registry_status = info.status
+    source.registry_checked_at = timezone.now()
+    source.save(update_fields=[
+        'domain_registered_at', 'registrar', 'registry_status',
+        'registry_checked_at', 'updated_at',
+    ])
     logger.info('Registry lookup for %s: %s', source.domain, info.detail or info.status)
     return info.status
 
