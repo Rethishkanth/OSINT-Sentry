@@ -322,6 +322,21 @@ CONTENT_ALLOW_PRIVATE_HOSTS = env.bool('CONTENT_ALLOW_PRIVATE_HOSTS', default=Fa
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
 SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
 
+# Module 4 runs arithmetic over the file, not a model. A trained detector
+# subclasses media.forensics.BaseForensics and is named here; nothing that
+# calls it changes.
+MEDIA_FORENSICS_ANALYZER = env(
+    'MEDIA_FORENSICS_ANALYZER', default='media.forensics.HeuristicForensics'
+)
+# The quality the image is re-encoded at for error level analysis. 90 is the
+# conventional choice: high enough that an unedited photograph barely moves,
+# low enough that a region with its own compression history stands out.
+MEDIA_ELA_QUALITY = env.int('MEDIA_ELA_QUALITY', default=90)
+# Large images are downscaled before the error-level pass. The signal is the
+# *distribution* of error across the frame, which survives downscaling, and a
+# 48-megapixel original otherwise makes an analyst wait for nothing.
+MEDIA_ELA_MAX_EDGE = env.int('MEDIA_ELA_MAX_EDGE', default=1400)
+
 # Corroboration: rating a story by whether independent outlets carried it too.
 # CompositeSearch looks through what we have already ingested *and* GDELT's
 # free, key-less index of global news. NullSearch disables it, and reports
