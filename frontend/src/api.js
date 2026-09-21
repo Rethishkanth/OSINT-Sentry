@@ -92,7 +92,7 @@ export async function login(username, password) {
   return data
 }
 
-export async function apiFetch(path, options = {}, _retried = false) {
+async function authedFetch(path, options = {}, _retried = false) {
   const token = readToken(ACCESS)
   // A file upload must go as multipart, and the boundary is only known to the
   // browser — setting Content-Type by hand here would send a header with no
@@ -109,12 +109,40 @@ export async function apiFetch(path, options = {}, _retried = false) {
 
   // Access tokens live 30 minutes; refresh once, transparently, then retry.
   if (res.status === 401 && !_retried && (await refreshAccess())) {
-    return apiFetch(path, options, true)
+    return authedFetch(path, options, true)
   }
+  return res
+}
 
+export async function apiFetch(path, options = {}) {
+  const res = await authedFetch(path, options)
   if (!res.ok) throw new ApiError(await parseError(res), res.status)
   if (res.status === 204) return null
   return res.json()
+}
+
+/**
+ * Fetch a file and hand it to the browser as a download.
+ *
+ * Not a plain <a href> or a new tab: these endpoints want the bearer token,
+ * and a link carries no Authorization header. The other way round — putting
+ * the token in the query string — would write a live credential into every
+ * proxy log, server log, and browser history entry between here and Django.
+ */
+export async function apiDownload(path, fallbackName = 'download') {
+  const res = await authedFetch(path)
+  if (!res.ok) throw new ApiError(await parseError(res), res.status)
+
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const named = /filename="?([^";]+)"?/.exec(disposition)
+  const url = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = named ? named[1] : fallbackName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 // DRF paginates by default; most views here just want the rows.

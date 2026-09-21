@@ -128,7 +128,13 @@ class ExtractionRun(TimeStampedModel):
 
 
 class Report(TimeStampedModel):
-    """A generated analyst report bundling a set of geolocated events."""
+    """A generated analyst report bundling a set of geolocated events.
+
+    The generated parts — document, findings, gaps — are written by
+    reportgis.reporting and are not edited here. `scope` is kept so the same
+    report can be rebuilt later against newer events and the two compared;
+    without it a report is a dead end, true of a moment nobody recorded.
+    """
 
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
@@ -151,6 +157,22 @@ class Report(TimeStampedModel):
         default=Status.DRAFT,
         db_index=True,
     )
+    # The report itself, as Markdown. See reportgis.reporting for why this is
+    # text and not a rendered document.
+    document = models.TextField(blank=True)
+    # The counted figures the document was assembled from, so a number in the
+    # prose can be checked against the number it came from.
+    findings = models.JSONField(default=dict, blank=True)
+    # What this report is not evidence of, in the platform's usual shape: one
+    # plain sentence per limitation. Stored separately from the document
+    # because a caller rendering the report elsewhere must not be able to drop
+    # this section by accident.
+    gaps = models.JSONField(default=list, blank=True)
+    # How the events were chosen: the filter, not the result.
+    scope = models.JSONField(default=dict, blank=True)
+    builder_version = models.CharField(max_length=64, blank=True)
+    # Left for an analyst's own export, attached by hand. Nothing in this
+    # module writes it — see reportgis.reporting.
     pdf = models.FileField(upload_to='reports/%Y/%m/', blank=True)
     generated_at = models.DateTimeField(null=True, blank=True)
 

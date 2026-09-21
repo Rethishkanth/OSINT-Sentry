@@ -323,6 +323,14 @@ MEDIA_ELA_MAX_EDGE = env.int('MEDIA_ELA_MAX_EDGE', default=1400)
 # caller.
 REPORTGIS_GEOCODER = env('REPORTGIS_GEOCODER', default='reportgis.geocode.GazetteerGeocoder')
 
+# Reports are assembled from counted figures by reportgis.reporting, one
+# template sentence per number — nothing writes prose about what the events
+# mean. A BaseReportBuilder subclass named here replaces the writer.
+REPORTGIS_REPORT_BUILDER = env(
+    'REPORTGIS_REPORT_BUILDER',
+    default='reportgis.reporting.NarrativeReportBuilder',
+)
+
 # Corroboration: rating a story by whether independent outlets carried it too.
 # CompositeSearch looks through what we have already ingested *and* GDELT's
 # free, key-less index of global news. NullSearch disables it, and reports

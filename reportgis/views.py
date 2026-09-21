@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from math import cos, radians
 
+from django.db import transaction
 from django.db.models import Count
+from django.http import HttpResponse
+from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,7 +26,19 @@ from content.models import ContentItem
 from . import gazetteer
 from .geocode import get_geocoder, haversine_km
 from .models import ExtractionRun, GeoEvent, Report
-from .serializers import ExtractionRunSerializer, GeoEventSerializer, ReportSerializer
+from .reporting import (
+    EmptySelection,
+    ScopeError,
+    get_report_builder,
+    plural,
+    select_events,
+)
+from .serializers import (
+    ExtractionRunSerializer,
+    GeoEventSerializer,
+    ReportListSerializer,
+    ReportSerializer,
+)
 from .tasks import locate_content_item
 
 # Above this a "nearby" query is asking for the whole map, and the bounding
@@ -118,6 +134,45 @@ class GeoEventViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """The module's headline counts, over everything rather than one page.
+
+        The console used to derive these from the rows it had on screen, which
+        is the first page of a paginated list — so twenty-six placed locations
+        displayed as twenty-five, and the number got quietly worse the more
+        there was to count. A headline figure has to be counted in the
+        database, not in the viewport.
+        """
+        bands = {
+            row['confidence']: row['n']
+            for row in GeoEvent.objects.values('confidence').annotate(n=Count('id'))
+        }
+
+        # Only the newest run per article counts towards the refusals. The log
+        # keeps every pass, so summing all of them would inflate the figure
+        # every time an article is re-read.
+        newest: dict[int, list] = {}
+        for item_id, notes in (
+            ExtractionRun.objects
+            .order_by('content_item_id', '-created_at')
+            .values_list('content_item_id', 'notes')
+        ):
+            newest.setdefault(item_id, notes or [])
+
+        return Response({
+            'events': GeoEvent.objects.count(),
+            'by_confidence': {
+                band: bands.get(band, 0) for band in GeoEvent.Confidence.values
+            },
+            'countries': (
+                GeoEvent.objects.exclude(country='').values('country').distinct().count()
+            ),
+            'articles_read': len(newest),
+            'not_placed': sum(len(notes) for notes in newest.values()),
+            'reports': Report.objects.count(),
+        })
+
+    @action(detail=False, methods=['get'])
     def engine(self, request):
         """What this module can and cannot do, read from the engine itself."""
         geocoder = get_geocoder()
@@ -206,9 +261,185 @@ class ExtractionRunViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ReportViewSet(viewsets.ModelViewSet):
+    """Reports, and the two ways of making one.
+
+    An analyst either hands over a list of events they have chosen, or hands
+    over a scope — a country, a confidence floor, a date window, a radius —
+    and lets the scope choose. The scope is stored either way, so the question
+    the report answered is still on the record next month when the answer has
+    changed.
+    """
+
+    # order_by is explicit because Meta.ordering is dropped on a queryset
+    # that groups — the annotate() below makes this one of those, and without
+    # it the paginator hands out pages in whatever order the DB felt like.
     queryset = Report.objects.prefetch_related('geo_events').annotate(
         _event_count=Count('geo_events')
-    )
+    ).order_by('-created_at')
     serializer_class = ReportSerializer
     search_fields = ('title', 'summary')
     ordering_fields = ('created_at', 'generated_at')
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ReportListSerializer
+        return ReportSerializer
+
+    # --------------------------------------------------------------- helpers
+
+    def _resolve(self, data):
+        """The events this request is about, described, with the stored scope.
+
+        An explicit list of event ids wins over a scope, and is recorded as a
+        scope of its own so that a regeneration reproduces the same selection
+        rather than silently widening to everything.
+        """
+        ids = data.get('events')
+        if ids:
+            if not isinstance(ids, (list, tuple)):
+                raise ScopeError('events must be a list of event ids.')
+            events = list(
+                GeoEvent.objects
+                .select_related('content_item', 'content_item__source')
+                .filter(pk__in=ids)
+            )
+            missing = set(ids) - {event.pk for event in events}
+            if missing:
+                raise ScopeError(
+                    f'No such event(s): {", ".join(str(pk) for pk in sorted(missing))}.'
+                )
+            return (
+                events,
+                [f'{plural(len(events), "event")} chosen by hand'],
+                {'events': list(ids)},
+            )
+
+        scope = data.get('scope') or {}
+        if not isinstance(scope, dict):
+            raise ScopeError('scope must be an object.')
+        events, described = select_events(scope)
+        return events, described, scope
+
+    @staticmethod
+    def _author(request):
+        user = getattr(request, 'user', None)
+        return user if getattr(user, 'is_authenticated', False) else None
+
+    def _write(self, built, scope, author, report=None):
+        with transaction.atomic():
+            if report is None:
+                report = Report(author=author)
+            report.title = built.title
+            report.summary = built.summary
+            report.document = built.document
+            report.findings = built.findings
+            report.gaps = built.gaps
+            report.scope = scope
+            report.builder_version = built.builder_version
+            report.generated_at = timezone.now()
+            report.save()
+            report.geo_events.set(built.event_ids)
+        return report
+
+    # --------------------------------------------------------------- actions
+
+    @action(detail=False, methods=['post'])
+    def preview(self, request):
+        """How many events a scope picks out, before committing to a report.
+
+        Cheap on purpose: the console calls it while the analyst is still
+        changing the filters, and a generate call that turns out to select
+        nothing is a worse way to learn that than this one.
+        """
+        try:
+            events, described, scope = self._resolve(request.data)
+        except ScopeError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        bands = {
+            band: 0 for band in (
+                GeoEvent.Confidence.HIGH,
+                GeoEvent.Confidence.MEDIUM,
+                GeoEvent.Confidence.LOW,
+            )
+        }
+        for event in events:
+            bands[event.confidence] = bands.get(event.confidence, 0) + 1
+
+        return Response({
+            'events': len(events),
+            'by_confidence': bands,
+            'countries': len({e.country for e in events if e.country}),
+            'articles': len({e.content_item_id for e in events if e.content_item_id}),
+            'scope': scope,
+            'scope_text': described,
+            'detail': (
+                'Nothing matches this scope.' if not events
+                else f'{plural(len(events), "event")} would be reported.'
+            ),
+        })
+
+    @action(detail=False, methods=['post'])
+    def generate(self, request):
+        """Build a report from a selection, and store it."""
+        try:
+            events, described, scope = self._resolve(request.data)
+        except ScopeError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        builder = get_report_builder()
+        try:
+            built = builder.build(
+                events,
+                title=str(request.data.get('title') or ''),
+                scope_text=described,
+            )
+        except EmptySelection as exc:
+            # 400, not an empty 200. The caller asked for a document and is
+            # being told none can honestly be written — that is a refusal, and
+            # it should read like one.
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        report = self._write(built, scope, self._author(request))
+        return Response(ReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def regenerate(self, request, pk=None):
+        """Rebuild this report from its stored scope, against today's events.
+
+        The row is reused rather than a second one created, so the thing an
+        analyst linked to stays the thing they linked to. What changed is
+        visible in generated_at and in the document itself.
+        """
+        report = self.get_object()
+        scope = report.scope or {}
+        request_shape = scope if 'events' in scope else {'scope': scope}
+        try:
+            events, described, scope = self._resolve(request_shape)
+        except ScopeError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        builder = get_report_builder()
+        try:
+            built = builder.build(events, title=report.title, scope_text=described)
+        except EmptySelection as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        report = self._write(built, scope, report.author, report=report)
+        return Response(ReportSerializer(report).data)
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """The report as a Markdown file, for handing to someone else."""
+        report = self.get_object()
+        if not report.document:
+            return Response(
+                {'detail': 'This report has no document. Regenerate it.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        name = slugify(report.title)[:60] or f'report-{report.pk}'
+        response = HttpResponse(
+            report.document, content_type='text/markdown; charset=utf-8'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{name}.md"'
+        return response

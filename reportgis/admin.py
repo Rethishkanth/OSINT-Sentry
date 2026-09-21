@@ -82,11 +82,48 @@ class ExtractionRunAdmin(admin.ModelAdmin):
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    list_display = ('title', 'status', 'author', 'event_count', 'generated_at', 'created_at')
-    list_filter = ('status',)
-    search_fields = ('title', 'summary')
+    list_display = (
+        'title', 'status', 'author', 'event_count', 'gap_count',
+        'generated_at', 'created_at',
+    )
+    list_filter = ('status', 'builder_version')
+    search_fields = ('title', 'summary', 'document')
     filter_horizontal = ('geo_events',)
+    date_hierarchy = 'created_at'
+    # Written by reportgis.reporting from counted figures. Editing the prose
+    # in the admin would leave a report whose sentences no longer match the
+    # findings printed beneath them — the regenerate action exists for this.
+    readonly_fields = (
+        'summary', 'document_display', 'gaps_display', 'findings',
+        'scope', 'builder_version', 'generated_at',
+    )
+    exclude = ('document', 'gaps')
 
     @admin.display(description='Events')
     def event_count(self, obj):
         return obj.geo_events.count()
+
+    @admin.display(description='Caveats')
+    def gap_count(self, obj):
+        return len(obj.gaps or [])
+
+    @admin.display(description='What this report does not show')
+    def gaps_display(self, obj):
+        gaps = obj.gaps or []
+        if not gaps:
+            return 'Not generated yet.'
+        return format_html(
+            '<ul style="margin:0;padding-left:18px;max-width:60em">{}</ul>',
+            format_html_join('', '<li style="margin-bottom:6px">{}</li>',
+                             ((gap,) for gap in gaps)),
+        )
+
+    @admin.display(description='Document')
+    def document_display(self, obj):
+        if not obj.document:
+            return 'Not generated yet.'
+        return format_html(
+            '<pre style="white-space:pre-wrap;max-width:60em;'
+            'max-height:32em;overflow:auto">{}</pre>',
+            obj.document,
+        )
