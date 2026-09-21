@@ -76,8 +76,11 @@ export default function App() {
     )
   }
 
-  const gisOnline = overview?.modules?.reportgis?.online ?? false
-  const gisReason = overview?.modules?.reportgis?.reason
+  // Module 5 used to drive an "GIS offline" light here, because it genuinely
+  // could be. It no longer can, so the light counts modules instead of
+  // singling one out.
+  const modules = Object.values(overview?.modules ?? {})
+  const onlineCount = modules.filter((m) => m.online).length
 
   return (
     <>
@@ -94,8 +97,8 @@ export default function App() {
           <div className="status-line">
             <span><i className="dot" />Uplink active</span>
             <span>
-              <i className={`dot ${gisOnline ? '' : 'warn'}`} />
-              GIS {gisOnline ? 'online' : 'offline'}
+              <i className={`dot ${onlineCount === modules.length ? '' : 'warn'}`} />
+              {onlineCount}/{modules.length} modules
             </span>
             <Clock />
             <button type="button" className="btn ghost" onClick={signOut}>
@@ -132,7 +135,7 @@ export default function App() {
           {tab === 'content' && <Content />}
           {tab === 'social' && <Social />}
           {tab === 'media' && <Media />}
-          {tab === 'reportgis' && <ReportGis online={gisOnline} reason={gisReason} />}
+          {tab === 'reportgis' && <ReportGis />}
         </main>
       </div>
     </>

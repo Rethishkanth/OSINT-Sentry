@@ -17,7 +17,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    USE_GIS=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / '.env')
@@ -27,13 +26,6 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
-
-# GeoDjango needs GDAL/GEOS installed on the machine, and a spatial database
-# behind it. Off by default so the project runs on nothing but Python: it drops
-# the spatial backend and the reportgis app. A database migrated with USE_GIS
-# off has no reportgis tables — turning it on later needs a fresh migrate.
-USE_GIS = env('USE_GIS')
-
 
 # Application definition
 
@@ -45,9 +37,6 @@ DJANGO_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 ]
-
-if USE_GIS:
-    DJANGO_APPS.append('django.contrib.gis')
 
 THIRD_PARTY_APPS = [
     'rest_framework',
@@ -63,11 +52,9 @@ LOCAL_APPS = [
     'content',
     'social',
     'media',
+    'reportgis',
     'security',
 ]
-
-if USE_GIS:
-    LOCAL_APPS.append('reportgis')
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -113,22 +100,14 @@ DB_BACKEND = env('DB_BACKEND', default='sqlite')
 if DB_BACKEND == 'sqlite':
     DATABASES = {
         'default': {
-            'ENGINE': (
-                'django.contrib.gis.db.backends.spatialite'
-                if USE_GIS
-                else 'django.db.backends.sqlite3'
-            ),
+            'ENGINE': 'django.db.backends.sqlite3',
             'NAME': env('DB_NAME', default=str(BASE_DIR / 'db.sqlite3')),
         }
     }
 elif DB_BACKEND == 'postgres':
     DATABASES = {
         'default': {
-            'ENGINE': (
-                'django.contrib.gis.db.backends.postgis'
-                if USE_GIS
-                else 'django.db.backends.postgresql'
-            ),
+            'ENGINE': 'django.db.backends.postgresql',
             'NAME': env('DB_NAME', default='osint_sentry'),
             'USER': env('DB_USER', default='postgres'),
             'PASSWORD': env('DB_PASSWORD', default=''),
@@ -336,6 +315,13 @@ MEDIA_ELA_QUALITY = env.int('MEDIA_ELA_QUALITY', default=90)
 # *distribution* of error across the frame, which survives downscaling, and a
 # 48-megapixel original otherwise makes an analyst wait for nothing.
 MEDIA_ELA_MAX_EDGE = env.int('MEDIA_ELA_MAX_EDGE', default=1400)
+
+# Module 5 resolves place names against a table compiled into the source
+# (reportgis.gazetteer), not a geocoding service: no key, no rate limit, and no
+# sending every article's place names to a third party. A subclass of
+# reportgis.geocode.BaseGeocoder named here replaces it without changing a
+# caller.
+REPORTGIS_GEOCODER = env('REPORTGIS_GEOCODER', default='reportgis.geocode.GazetteerGeocoder')
 
 # Corroboration: rating a story by whether independent outlets carried it too.
 # CompositeSearch looks through what we have already ingested *and* GDELT's

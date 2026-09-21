@@ -83,7 +83,6 @@ def api_root(request):
     Django serves the API only, so hitting / in a browser used to 404 with no
     hint that the console lives on a different port. This says where to go.
     """
-    from django.apps import apps as django_apps
     from django.conf import settings
 
     def url(path):
@@ -99,9 +98,8 @@ def api_root(request):
         'content': url('/api/content/'),
         'social': url('/api/social/'),
         'media': url('/api/media/'),
+        'reportgis': url('/api/reportgis/'),
     }
-    if django_apps.is_installed('reportgis'):
-        endpoints['reportgis'] = url('/api/reportgis/')
 
     return Response({
         'service': 'osint-sentry',
@@ -123,19 +121,19 @@ def health(request):
 def overview(request):
     """Counts and module status for the dashboard.
 
-    Reports which modules are actually online rather than letting the UI
-    assume — reportgis is not even installed when USE_GIS is off.
+    Every module reports online now. Module 5 used to report otherwise: its
+    GeoEvent stored a PostGIS geometry, so a machine without GDAL kept the app
+    out of INSTALLED_APPS entirely and the console drew an OFFLINE panel. The
+    geometry is two float columns now and the app loads everywhere.
     """
-    from django.apps import apps as django_apps
     from django.conf import settings
 
     from content.models import ContentItem, Entity
     from credibility.models import CredibilityScore
     from media.models import MediaItem, TamperingResult
+    from reportgis.models import ExtractionRun, GeoEvent, Report
     from security.models import AuditLogEntry
     from social.models import InteractionEdge, SocialAccount, SocialPost
-
-    gis_online = django_apps.is_installed('reportgis')
 
     modules = {
         'credibility': {
@@ -174,22 +172,18 @@ def overview(request):
             'model_version': settings.MEDIA_FORENSICS_ANALYZER.rsplit('.', 1)[-1],
         },
         'reportgis': {
-            'online': gis_online,
-            'reason': None if gis_online else 'GDAL/GEOS not installed (USE_GIS is off)',
-            'events': 0,
-            'reports': 0,
-            'model_version': None,
+            'online': True,
+            'events': GeoEvent.objects.count(),
+            'located_precisely': GeoEvent.objects.filter(
+                confidence=GeoEvent.Confidence.HIGH
+            ).count(),
+            'articles_read': ExtractionRun.objects.values('content_item').distinct().count(),
+            'reports': Report.objects.count(),
+            'model_version': settings.REPORTGIS_GEOCODER.rsplit('.', 1)[-1],
         },
     }
-
-    if gis_online:
-        GeoEvent = django_apps.get_model('reportgis', 'GeoEvent')
-        Report = django_apps.get_model('reportgis', 'Report')
-        modules['reportgis']['events'] = GeoEvent.objects.count()
-        modules['reportgis']['reports'] = Report.objects.count()
 
     return Response({
         'modules': modules,
         'audit_entries': AuditLogEntry.objects.count(),
-        'gis_enabled': gis_online,
     })

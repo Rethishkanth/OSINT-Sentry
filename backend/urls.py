@@ -28,12 +28,8 @@ urlpatterns = [
     path('api/content/', include('content.urls')),
     path('api/social/', include('social.urls')),
     path('api/media/', include('media.urls')),
+    path('api/reportgis/', include('reportgis.urls')),
 ]
-
-# reportgis is only in INSTALLED_APPS when USE_GIS is on, so its routes cannot
-# be imported unconditionally.
-if settings.USE_GIS:
-    urlpatterns.append(path('api/reportgis/', include('reportgis.urls')))
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -165,6 +165,22 @@ def analyze_content(self, content_item_id):
         'Analyzed ContentItem %s: %d entities, %d topics',
         item.pk, len(result.entities), len(result.topics),
     )
+
+    # Hand the analysed text to module 5 while it is warm, so the map fills as
+    # content arrives instead of waiting for someone to press a button.
+    #
+    # Imported here and guarded on purpose: geolocation is a downstream reading
+    # of this article, not part of analysing it. A geocoder that breaks must
+    # not take an otherwise finished analysis down with it, and module 2 must
+    # not stop working if module 5 is removed.
+    try:
+        from reportgis.tasks import locate_content_item
+
+        run = locate_content_item(item)
+        logger.info('Located %s place(s) in ContentItem %s', run.events_found, item.pk)
+    except Exception:
+        logger.exception('Geolocation failed for ContentItem %s; analysis stands', item.pk)
+
     return item.pk
 
 
