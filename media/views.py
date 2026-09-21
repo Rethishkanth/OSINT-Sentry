@@ -59,11 +59,15 @@ class MediaItemViewSet(viewsets.ModelViewSet):
             'image_analysis': PILLOW_AVAILABLE,
             'deepfake_model': False,
             'capabilities': [
-                'Error level analysis (JPEG)',
                 'JPEG quantization table profiling',
                 'EXIF thumbnail vs image comparison',
                 'Editor and generator metadata tags',
                 'SHA-256 fingerprinting',
+            ],
+            'reported_not_scored': [
+                'Error level analysis (JPEG) — measured, shown, and kept out '
+                'of the verdict: on test composites it flagged untouched '
+                'images about as often as edited ones.',
             ],
             'not_available': [
                 'Deepfake / synthetic media classification (no model installed)',

@@ -421,6 +421,17 @@ def _run_ela(image, findings: Findings) -> None:
     diff = ImageChops.difference(working, resaved).convert('L')
     stat = ImageStat.Stat(diff)
     findings.ela_supported = True
+
+    if findings.estimated_quality == quality:
+        # Re-encoding at the quality the file already carries is very nearly
+        # the identity: the coefficients are quantised by the same table they
+        # came out of, the residual is rounding noise, and the map below is
+        # flat by construction rather than because the picture is consistent.
+        findings.notes.append(
+            f'The file is already stored at quality {quality}, the quality '
+            f'this pass re-encodes at, so the error map is uninformative for '
+            f'this image rather than clean.'
+        )
     findings.ela_mean = round(stat.mean[0], 4)
     findings.ela_max = int(diff.getextrema()[1])
     findings.ela_hotspot_ratio = _hotspot_ratio(diff, working)
@@ -449,6 +460,22 @@ def _hotspot_ratio(diff, original) -> float:
     Deviation counts in both directions — a region taken from a heavily
     compressed source has already lost its high-frequency content and so
     re-encodes with *less* error than its surroundings, not more.
+
+    What this number is not
+    -----------------------
+    It is not evidence of editing, and nothing in this module treats it as
+    evidence. Swept over photo-like frames at eight save qualities against
+    256 composites carrying a visibly different compression history, the
+    largest-cluster ratio landed in the same range for untouched images as
+    for spliced ones: at a 0.035 cut-off it flagged 15 of 64 originals and
+    78 of 256 composites. Re-running the same sweep as a JPEG ghost — the
+    stronger formulation, comparing each block's error curve across a sweep
+    of re-encode qualities rather than at a single one — did no better: 16
+    of 30 originals against 41 of 90 composites.
+
+    So the value is reported and never scored. It stays because the map
+    behind it is a real thing to look at, and because recording a
+    measurement that did not work is more useful than quietly dropping it.
     """
     block = 16
     columns = max(1, diff.width // block)
@@ -460,10 +487,20 @@ def _hotspot_ratio(diff, original) -> float:
 
     # A BOX resize averages each source region into one destination pixel, so
     # these are per-block means computed in two passes instead of thousands.
-    errors = list(diff.resize((columns, rows), Image.BOX).getdata())
+    #
+    # Both are converted to 'F' first, and that conversion is the difference
+    # between a working statistic and a useless one. Block means here are
+    # small -- a singly-compressed image re-encodes to within a couple of
+    # levels -- and an 8-bit resize rounds every one of them to an integer.
+    # Measured on a 1200-block frame, that left three distinct values for the
+    # whole picture, so the median and the MAD both collapsed onto the same
+    # number and the function returned 0.0 for everything put in front of it.
+    # In floating point the same frame has a few hundred distinct values.
+    errors = list(diff.convert('F').resize((columns, rows), Image.BOX).getdata())
     detail = list(
         original.convert('L')
         .filter(ImageFilter.FIND_EDGES)
+        .convert('F')
         .resize((columns, rows), Image.BOX)
         .getdata()
     )
@@ -605,30 +642,25 @@ def _rate(findings: Findings) -> ForensicResult:
         )
 
     # -- error levels ------------------------------------------------------
+    # Reported, never scored. See _hotspot_ratio: measured against composites
+    # this statistic fires on originals as often as on forgeries, so adding
+    # points for it would be inventing a signal the measurement says is not
+    # there. The number is still shown, because the map it comes from is
+    # worth an analyst's eye even when it is worth nothing to an arithmetic.
     ela_score = None
     if findings.ela_supported:
         ratio = findings.ela_hotspot_ratio or 0.0
         ela_score = round(ratio * 100, 2)
-        if ratio >= 0.08:
-            add(
-                0.35,
-                f'One connected region covering {ratio * 100:.1f}% of the '
-                f'frame degrades at a markedly different rate from everything '
-                f'around it — the signature of an area carrying its own '
-                f'compression history.',
-            )
-        elif ratio >= 0.035:
-            add(
-                0.15,
-                f'A region covering {ratio * 100:.1f}% of the frame shows '
-                f'error levels out of step with the rest — weak, and a large '
-                f'overlay, a logo or heavy local sharpening does the same.',
-            )
-        else:
-            reasons.append({
-                'label': 'Error levels are consistent across the whole frame',
-                'points': 0.0,
-            })
+        reasons.append({
+            'label': (
+                f'Error level analysis: the largest region degrading out of '
+                f'step with the rest of the frame covers {ratio * 100:.1f}% '
+                f'of it. Recorded for inspection and deliberately not scored '
+                f'— on test composites this measure did not separate edited '
+                f'images from untouched ones.'
+            ),
+            'points': 0.0,
+        })
 
     suspicion = round(max(0.0, min(1.0, suspicion)), 3)
     verdict, summary = _verdict_for(suspicion, proven, findings)

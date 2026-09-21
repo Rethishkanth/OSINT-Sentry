@@ -94,10 +94,14 @@ export async function login(username, password) {
 
 export async function apiFetch(path, options = {}, _retried = false) {
   const token = readToken(ACCESS)
+  // A file upload must go as multipart, and the boundary is only known to the
+  // browser — setting Content-Type by hand here would send a header with no
+  // boundary in it and the upload would arrive empty.
+  const isUpload = typeof FormData !== 'undefined' && options.body instanceof FormData
   const res = await fetch(path, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isUpload ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },

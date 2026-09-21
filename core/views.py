@@ -165,7 +165,13 @@ def overview(request):
             'online': True,
             'items': MediaItem.objects.count(),
             'results': TamperingResult.objects.count(),
-            'model_version': None,
+            'manipulated': TamperingResult.objects.filter(
+                verdict=TamperingResult.Verdict.MANIPULATED
+            ).count(),
+            'suspicious': TamperingResult.objects.filter(
+                verdict=TamperingResult.Verdict.SUSPICIOUS
+            ).count(),
+            'model_version': settings.MEDIA_FORENSICS_ANALYZER.rsplit('.', 1)[-1],
         },
         'reportgis': {
             'online': gis_online,
