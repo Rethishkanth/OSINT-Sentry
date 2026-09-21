@@ -298,8 +298,25 @@ CONTENT_FETCH_BODIES = env.bool('CONTENT_FETCH_BODIES', default=True)
 # refused. Only turn this on to crawl a site on your own network, and never in
 # an environment where users can submit URLs.
 CONTENT_ALLOW_PRIVATE_HOSTS = env.bool('CONTENT_ALLOW_PRIVATE_HOSTS', default=False)
+# Module 3 scores the shape of the interaction graph, not the contents of any
+# profile. A trained RGCN subclasses social.analysis.BaseGraphScorer and is
+# named here; the tasks that call it do not change.
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
 SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
+# Floors, not tuning knobs. Below them the heuristic scorer records no score
+# and says why: one unanswered mention is 100% unreciprocated, which is
+# arithmetic rather than evidence of automation.
+SOCIAL_MIN_INTERACTIONS = env.int('SOCIAL_MIN_INTERACTIONS', default=3)
+SOCIAL_MIN_SHARED_TARGETS = env.int('SOCIAL_MIN_SHARED_TARGETS', default=3)
+# Grouping accounts into clusters. A trained model subclasses
+# social.campaigns.BaseCampaignDetector and is named here.
+SOCIAL_CAMPAIGN_DETECTOR = env(
+    'SOCIAL_CAMPAIGN_DETECTOR', default='social.campaigns.OverlapCampaignDetector'
+)
+SOCIAL_CAMPAIGN_MIN_SIZE = env.int('SOCIAL_CAMPAIGN_MIN_SIZE', default=3)
+# Jaccard overlap two accounts' target lists need before they are linked.
+# Lowering it does not find more campaigns, it finds looser ones.
+SOCIAL_CAMPAIGN_MIN_OVERLAP = env.float('SOCIAL_CAMPAIGN_MIN_OVERLAP', default=0.5)
 
 # Module 4 runs arithmetic over the file, not a model. A trained detector
 # subclasses media.forensics.BaseForensics and is named here; nothing that

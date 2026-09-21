@@ -133,7 +133,12 @@ def overview(request):
     from media.models import MediaItem, TamperingResult
     from reportgis.models import ExtractionRun, GeoEvent, Report
     from security.models import AuditLogEntry
-    from social.models import InteractionEdge, SocialAccount, SocialPost
+    from social.models import (
+        Campaign,
+        InteractionEdge,
+        SocialAccount,
+        SocialPost,
+    )
 
     modules = {
         'credibility': {
@@ -151,12 +156,22 @@ def overview(request):
             ).count(),
             'model_version': settings.CONTENT_ANALYZER.rsplit('.', 1)[-1],
         },
+        # Order matters here: the dashboard panel renders the first three
+        # sub-metrics and drops the rest, so the figures that change what an
+        # analyst does come first. `unscored` sits directly beside `flagged`
+        # because an account the scorer declined to judge is not a cleared
+        # account, and a panel showing only the flag count files it as one.
+        # `edges` and `posts` fall off the panel and are on the module page.
         'social': {
             'online': True,
             'accounts': SocialAccount.objects.count(),
+            'flagged': SocialAccount.objects.filter(bot_likelihood__gte=0.7).count(),
+            'unscored': SocialAccount.objects.filter(
+                bot_likelihood__isnull=True
+            ).count(),
+            'campaigns': Campaign.objects.count(),
             'edges': InteractionEdge.objects.count(),
             'posts': SocialPost.objects.count(),
-            'flagged': SocialAccount.objects.filter(bot_likelihood__gte=0.7).count(),
             'model_version': settings.SOCIAL_GRAPH_SCORER.rsplit('.', 1)[-1],
         },
         'media': {

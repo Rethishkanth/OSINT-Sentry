@@ -20,17 +20,24 @@ class SocialAccount(TimeStampedModel):
     follower_count = models.PositiveIntegerField(null=True, blank=True)
     account_created_at = models.DateTimeField(null=True, blank=True)
 
-    # Written by social.tasks.refresh_graph_scores.
+    # Written by social.tasks.refresh_graph_scores. Null means the graph held
+    # too little to judge on, which is a different state from a low score and
+    # is shown as such: no rating is given rather than a bad one.
     bot_likelihood = models.FloatField(
         null=True,
         blank=True,
-        help_text='0-1, probability the account is automated',
+        help_text='0-1, probability the account is automated. Null = not enough graph.',
     )
     coordination_score = models.FloatField(
         null=True,
         blank=True,
-        help_text='0-1, how much the account moves in lockstep with others',
+        help_text='0-1, how much the account moves in lockstep with others.',
     )
+    # Why those two numbers, as {label, detail, effect}, where effect is
+    # 'bot', 'coordination', or 'limits' for a line saying what the graph
+    # cannot support. Structured rather than prose so an old score's working
+    # can be compared against a new scorer's.
+    reasons = models.JSONField(default=list, blank=True)
     graph_model_version = models.CharField(max_length=64, blank=True)
     scored_at = models.DateTimeField(null=True, blank=True)
 
@@ -96,17 +103,23 @@ class SocialPost(TimeStampedModel):
     posted_at = models.DateTimeField(null=True, blank=True)
     reshare_count = models.PositiveIntegerField(null=True, blank=True)
 
-    # Written by social.tasks.score_post.
+    # Written by social.tasks.score_post. Null sentiment means no word in the
+    # post was in the lexicon at all — which is not the same as the post being
+    # even-handed, and must not be displayed as 0.00.
     sentiment = models.FloatField(
         null=True,
         blank=True,
-        help_text='-1 (negative) to 1 (positive)',
+        help_text='-1 (negative) to 1 (positive). Null = the lexicon found nothing.',
     )
     toxicity = models.FloatField(
         null=True,
         blank=True,
         help_text='0-1, higher is more toxic',
     )
+    # {label, detail, effect}, effect being 'sentiment', 'toxicity' or
+    # 'limits'. Every post carries at least one line, including the ones that
+    # scored zero.
+    reasons = models.JSONField(default=list, blank=True)
     text_model_version = models.CharField(max_length=64, blank=True)
     scored_at = models.DateTimeField(null=True, blank=True)
 
@@ -116,3 +129,84 @@ class SocialPost(TimeStampedModel):
 
     def __str__(self):
         return f'{self.account}: {self.text[:60]}'
+
+
+class Campaign(TimeStampedModel):
+    """A cluster of accounts that all interact with the same set of others.
+
+    Written by social.tasks.detect_campaigns; never edited here. The membership
+    *is* the identity — `fingerprint` hashes it — so re-running the detector
+    over an unchanged graph updates this row instead of stacking a second copy
+    of it, and an account joining makes a genuinely different cluster.
+
+    Nothing in this model asserts intent. A cluster is a shape in the
+    interaction graph, and `reasons` carries the line saying so on every row.
+    """
+
+    fingerprint = models.CharField(
+        max_length=64,
+        unique=True,
+        help_text='Hash of the sorted member ids. The cluster is its membership.',
+    )
+    name = models.CharField(max_length=255)
+    members = models.ManyToManyField(
+        SocialAccount,
+        related_name='campaigns',
+        help_text='The accounts moving together.',
+    )
+    common_targets = models.ManyToManyField(
+        SocialAccount,
+        related_name='targeted_by_campaigns',
+        blank=True,
+        help_text='Accounts every member interacts with.',
+    )
+    size = models.PositiveIntegerField(default=0)
+    shared_target_count = models.PositiveIntegerField(default=0)
+    cohesion = models.FloatField(
+        null=True,
+        blank=True,
+        help_text='0-1, mean overlap between every pair of members.',
+    )
+    reasons = models.JSONField(default=list, blank=True)
+    detector_version = models.CharField(max_length=64, blank=True)
+    # Stamped by every pass that finds this cluster again. A campaign whose
+    # last_seen_at predates the newest run is not deleted: the graph changing
+    # under it is a fact about the capture, and destroying the row would take
+    # the evidence with it. The console marks it stale instead.
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-size', '-cohesion']
+        indexes = [models.Index(fields=['-last_seen_at'])]
+
+    def __str__(self):
+        return self.name
+
+
+class CampaignRun(TimeStampedModel):
+    """One pass of the detector over the whole graph.
+
+    Kept for the same reason reportgis.ExtractionRun is: the pass that found
+    nothing is a finding. Without it, a graph with no campaigns in it cannot
+    be told apart from a graph nobody has run the detector over, and "no
+    coordinated activity" is exactly the conclusion that must never be
+    reached by default.
+    """
+
+    campaigns_found = models.PositiveIntegerField(default=0)
+    accounts_considered = models.PositiveIntegerField(
+        default=0,
+        help_text='Accounts with enough targets to be compared at all.',
+    )
+    accounts_total = models.PositiveIntegerField(default=0)
+    # What the detector looked at and declined to report, as {label, detail,
+    # effect}. This is the half of the output that stops an empty campaign
+    # list from reading as an all-clear.
+    notes = models.JSONField(default=list, blank=True)
+    detector_version = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.created_at:%Y-%m-%d %H:%M}: {self.campaigns_found} found'
