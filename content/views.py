@@ -1,8 +1,10 @@
+from django.conf import settings
+from django.db.models import Avg
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
-from .models import ContentItem, Corroboration
+from .models import ContentItem, Corroboration, Entity
 from .serializers import (
     ContentItemSerializer,
     CorroborationSerializer,
@@ -28,6 +30,47 @@ class ContentItemViewSet(viewsets.ModelViewSet):
     search_fields = ('title', 'body', 'url', 'source__domain')
     ordering_fields = ('published_at', 'created_at', 'analyzed_at')
 
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """GET /api/content/summary/ — corpus-wide counts for the console.
+
+        These are counted in the database, not by the console adding up the
+        rows it happens to have. The list endpoint pages at 25 with no
+        page-size parameter, so a panel built from `rows.length` reports 25
+        items on a corpus of four thousand and looks entirely plausible while
+        doing it.
+
+        `unchecked` is the figure to read first. An article nobody has
+        cross-referenced is not a clean article, and a console that shows only
+        how many checks came back well files it as one.
+        """
+        items = ContentItem.objects.all()
+        reports = Corroboration.objects.all()
+        checked = reports.values('content_item').distinct().count()
+
+        return Response({
+            'items': items.count(),
+            'analyzed': items.filter(status=ContentItem.Status.ANALYZED).count(),
+            'failed': items.filter(status=ContentItem.Status.FAILED).count(),
+            'entities': Entity.objects.count(),
+            'checked': checked,
+            'unchecked': items.count() - checked,
+            'checks': reports.count(),
+            'unrated': reports.filter(score__isnull=True).count(),
+            'mean_score': reports.aggregate(v=Avg('score'))['v'],
+            'disputed': reports.filter(claims_disputed__gt=0).count(),
+            # Reports where a fact-checker's published ruling closely matches
+            # this story's subject and was not positive.
+            'fact_checked': reports.filter(
+                fact_check_status=Corroboration.FactCheckStatus.FOUND
+            ).count(),
+            'fact_check_negative': reports.filter(fact_checks_negative__gt=0).count(),
+            'fact_check_enabled': (
+                settings.CONTENT_FACT_CHECK_CLIENT.rsplit('.', 1)[-1]
+                != 'NullFactCheckClient'
+            ),
+        })
+
     @action(detail=True, methods=['post'])
     def corroborate(self, request, pk=None):
         """POST /api/content/{id}/corroborate/ — cross-reference this story.
@@ -38,7 +81,9 @@ class ContentItemViewSet(viewsets.ModelViewSet):
         """
         item = self.get_object()
         report_id = corroborate_item.run(item.pk)
-        report = Corroboration.objects.prefetch_related('matches').get(pk=report_id)
+        report = Corroboration.objects.prefetch_related(
+            'matches', 'fact_checks'
+        ).get(pk=report_id)
         return Response(CorroborationSerializer(report).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
@@ -58,7 +103,7 @@ class CorroborationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (
         Corroboration.objects
         .select_related('content_item__source')
-        .prefetch_related('matches')
+        .prefetch_related('matches', 'fact_checks')
     )
     serializer_class = CorroborationSerializer
     search_fields = ('content_item__title', 'content_item__source__domain', 'verdict')
@@ -99,7 +144,7 @@ def fetch(request):
 
         item = ContentItem.objects.get(pk=result['content_item'])
         report = (
-            Corroboration.objects.prefetch_related('matches')
+            Corroboration.objects.prefetch_related('matches', 'fact_checks')
             .filter(pk=result.get('corroboration')).first()
         )
         return Response(

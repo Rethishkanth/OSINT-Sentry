@@ -6,6 +6,7 @@ from .models import (
     Corroboration,
     CorroborationMatch,
     Entity,
+    FactCheckMatch,
     Topic,
 )
 
@@ -54,13 +55,28 @@ class CorroborationMatchInline(admin.TabularInline):
     readonly_fields = fields
 
 
+class FactCheckMatchInline(admin.TabularInline):
+    """Published fact-checks found alongside the check.
+
+    `rating` shows the fact-checker's own words and `verdict` our bucket for
+    them, side by side, so a bucketing mistake is visible rather than hidden
+    behind a tidy label.
+    """
+
+    model = FactCheckMatch
+    extra = 0
+    fields = ('publisher', 'rating', 'verdict', 'close_match', 'match_strength',
+              'claim', 'url')
+    readonly_fields = fields
+
+
 @admin.register(Corroboration)
 class CorroborationAdmin(admin.ModelAdmin):
     list_display = (
         'content_item', 'rating', 'verdict', 'independent_sources',
-        'engine_version', 'created_at',
+        'fact_check_status', 'fact_checks_negative', 'engine_version', 'created_at',
     )
-    list_filter = ('verdict', 'engine_version')
+    list_filter = ('verdict', 'fact_check_status', 'engine_version')
     search_fields = ('content_item__title', 'content_item__source__domain', 'rationale')
     autocomplete_fields = ('content_item',)
     date_hierarchy = 'created_at'
@@ -68,9 +84,11 @@ class CorroborationAdmin(admin.ModelAdmin):
     # rationale a lie about how the score was reached.
     readonly_fields = (
         'score', 'verdict', 'keywords', 'rationale', 'searched',
-        'sources_checked', 'independent_sources', 'engine_version',
+        'sources_checked', 'independent_sources', 'fact_check_status',
+        'fact_check_detail', 'fact_checks_found', 'fact_checks_negative',
+        'engine_version',
     )
-    inlines = (CorroborationMatchInline,)
+    inlines = (CorroborationMatchInline, FactCheckMatchInline)
 
     @admin.display(description='Rating', ordering='score')
     def rating(self, obj):

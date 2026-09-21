@@ -398,6 +398,31 @@ CORROBORATION_PREFILTER_SIMILARITY = env.float('CORROBORATION_PREFILTER_SIMILARI
 # Sources scoring below this are not ingested from at all.
 CONTENT_MIN_CREDIBILITY = env.float('CONTENT_MIN_CREDIBILITY', default=25.0)
 
+# Published fact-checks about the same subject, looked up alongside the
+# corroboration check. The default is the null client: this is the one part of
+# the platform that needs somebody's API key, and a fresh clone must not fail
+# a check because a key it was never given is missing. Point this at
+# GoogleFactCheckClient once CONTENT_FACT_CHECK_API_KEY is set.
+#
+# A fact-check found here never moves the 0-10 rating, in either direction.
+# The match is made on the article's search terms, and a number that shifts on
+# a keyword overlap would be a guess with a decimal point on it.
+CONTENT_FACT_CHECK_CLIENT = env(
+    'CONTENT_FACT_CHECK_CLIENT', default='content.factcheck.NullFactCheckClient'
+)
+CONTENT_FACT_CHECK_API_KEY = env('CONTENT_FACT_CHECK_API_KEY', default='')
+CONTENT_FACT_CHECK_ENDPOINT = env(
+    'CONTENT_FACT_CHECK_ENDPOINT',
+    default='https://factchecktools.googleapis.com/v1alpha1/claims:search',
+)
+CONTENT_FACT_CHECK_TIMEOUT = env.float('CONTENT_FACT_CHECK_TIMEOUT', default=12.0)
+CONTENT_FACT_CHECK_MAX_RESULTS = env.int('CONTENT_FACT_CHECK_MAX_RESULTS', default=10)
+CONTENT_FACT_CHECK_LANGUAGE = env('CONTENT_FACT_CHECK_LANGUAGE', default='en')
+# Share of the article's search terms a reviewed claim must carry before the
+# match is called close. Lowering it does not find more fact-checks about this
+# story; it relabels fact-checks about other stories as being about this one.
+CONTENT_FACT_CHECK_MIN_MATCH = env.float('CONTENT_FACT_CHECK_MIN_MATCH', default=0.6)
+
 
 # Where the analyst console is served from. Django hosts the API only, so the
 # API root points visitors here rather than 404ing on /.

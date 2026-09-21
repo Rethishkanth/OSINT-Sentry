@@ -2,9 +2,23 @@
 
 Django REST API backend + Vite/React frontend for the OSINT-Sentry analysis platform.
 
-Covers Days 1–6 of the build plan: project skeleton and data models (1–3), plus
-the credibility engine, content analysis pipeline, and social graph analysis
-(4–6) with audit logging across every model.
+All five analysis modules are built and wired to the console: source
+credibility and site safety (1), content fetching, corroboration and
+fact-check lookup (2), social graph and campaign detection (3), media
+forensics (4), and geolocation and reporting (5) — with audit logging across
+every model.
+
+One rule runs through all five, and most of the design follows from it:
+
+> **No rating is given rather than a bad one.**
+
+Every module can decline to answer, and when it declines it says why in the
+same place it would have put the number. A failed corroboration search, an
+account with too little graph to judge, an image whose JPEG history makes error
+level analysis meaningless, a place name the gazetteer does not carry, a
+fact-check lookup with no API key — each records *what it could not establish*
+rather than a zero. A zero and "nobody looked" are the same glyph on a
+dashboard and are not the same finding.
 
 ## The ML seam
 
@@ -19,8 +33,13 @@ endpoints, admin — is real and testable today.
 | `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT |
 | `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
 | `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | **real** feed-first fetcher over `urllib` | Scrapy spiders |
-| `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap | RGCN (PyG/DGL) |
-| `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons | RoBERTa |
+| `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) |
+| `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa |
+| `SOCIAL_CAMPAIGN_DETECTOR` | `social.campaigns.BaseCampaignDetector` | shared-target overlap + connected components with a common core | graph clustering |
+| `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** ELA, JPEG quantisation, metadata — declining where ELA is meaningless | ViT deepfake detection |
+| `REPORTGIS_GEOCODER` | `reportgis.geocode.BaseGeocoder` | **real** gazetteer compiled into the source; no service, no key | Nominatim / commercial geocoder |
+| `REPORTGIS_REPORT_BUILDER` | `reportgis.reporting.BaseReportBuilder` | Markdown assembled from counted figures, never generated prose | LLM narrative generation |
+| `CONTENT_FACT_CHECK_CLIENT` | `content.factcheck.BaseFactCheckClient` | null client; **real** Google Fact Check Tools behind an API key | — |
 
 Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
@@ -313,6 +332,70 @@ magnitude, and the same counted noun — 47 *people* is only ever contradicted b
 another count of people. Every one of those guards is there because its absence
 produced a wrong answer on a live article.
 
+### Fact-checks somebody else already did
+
+Everything above is a machine reading text. This part is different: it looks up
+work a *person* did. `content/factcheck.py` queries the Google Fact Check Tools
+API, which indexes the ClaimReview markup published by IFCN signatories — Full
+Fact, PolitiFact, Snopes, AFP, Boom Live, Africa Check and several hundred
+others. What comes back is a citation, and a citation is the one output of this
+platform that needs no defending.
+
+**It is off by default and needs an API key you supply yourself.** Nothing in
+this repo holds one, and a fresh clone runs every check without one:
+
+```
+CONTENT_FACT_CHECK_CLIENT=content.factcheck.GoogleFactCheckClient
+CONTENT_FACT_CHECK_API_KEY=your-key
+```
+
+Enable the Fact Check Tools API on a Google Cloud project and create a key for
+it. Without the key the client reports **`no_key`** and makes no request at
+all — an unauthenticated call returns 403, and a 403 arriving as "lookup
+failed" is a more alarming thing on screen than a feature nobody has
+configured.
+
+**A fact-check never moves the rating, in either direction.** This is the rule
+the layer is built around, and it is a restriction rather than a shortcut. The
+lookup is matched on the article's search terms, so a hit means *somebody has
+written about something like this* — and a query about flooding in Kerala will
+happily return a fact-check of a different claim about flooding in Kerala. A
+number that shifts on a keyword overlap is a guess with a decimal point on it,
+and this module has already shipped one of those. So the working line for the
+fact-check carries no contribution at all, and the console says the rating is
+unaffected, because a reader who assumes the number already accounts for a
+fact-checker's ruling will quietly discount it twice.
+
+What the analyst gets instead is the publisher, the claim as the fact-checker
+stated it, their verdict in their own words, and a link — enough to settle the
+question in about ten seconds, by reading, which is the correct way to settle
+it.
+
+Three smaller decisions follow from the same caution:
+
+* **Close and loose matches are labelled and never merged.** A close match
+  carries most of the article's search terms; a loose one is shown dimmed as a
+  lead to follow. Only close matches are counted as negative, because a warning
+  colour on a keyword coincidence is worse than no panel at all. Below two
+  shared terms nothing is reported — one shared proper noun is a coincidence,
+  and coincidences printed beside the word FALSE are how a console libels
+  someone.
+* **The publisher's own wording always survives.** `textualRating` is free text
+  a fact-checker chose. "Pants on Fire", "Four Pinocchios" and "Altered photo"
+  all bucket to *false* here, and all three mean something more specific than
+  that. The bucket only decides which rows get emphasis; the words are what is
+  displayed. Anything unrecognised stays *unrated* rather than being guessed
+  towards false.
+* **Five states, not two.** *Switched off*, *no key*, *lookup failed*, *nothing
+  published*, and *matches found* all render as an empty list, and four of them
+  are not findings about the article. They are stored and shown separately.
+
+What it cannot do: tell you an unchecked claim is true. The overwhelming
+majority of news has never been fact-checked by anyone, so absence here means
+absence and nothing else. It also only sees fact-checks published with
+ClaimReview markup — a fact-check that exists but was never marked up does not
+exist to this layer.
+
 ### Why every article used to score 3.1
 
 Worth recording, because the arithmetic was never the problem. Almost every
@@ -378,9 +461,10 @@ not get to obey robots.txt only when convenient.
 
 ### Testing it
 
-`content/tests.py` is 102 tests, and `credibility/tests.py` a further 27 — 129 in all and **none of them touch the network**:
-everything outbound is behind `content.http.request` or a search backend, so
-the tests replace those and drive the whole pipeline on canned data.
+`content/tests.py` is 135 tests, and `credibility/tests.py` a further 27 —
+and **none of them touch the network**: everything outbound is behind
+`content.http.request`, a search backend, or a fact-check client, so the tests
+replace those and drive the whole pipeline on canned data.
 
 ```bash
 .venv/Scripts/python.exe manage.py test content
@@ -397,6 +481,103 @@ navigation bar outvoting a headline, a clock time (`03:12`) surfacing as two
 disputed statistics, a year being compared against a death toll, a publication
 timestamp treated as a claim, and a line break making a story about 47 *people*
 record itself as counting 47 *officials*.
+
+## Module 3: which accounts are acting together?
+
+`social/` reads the shape of the interaction graph and nothing else — no
+profile text, no follower counts, no outside service. Two scorers and a
+detector, all abstaining.
+
+**Both scorers can decline.** They work by counting, and counting always
+produces a number; the question is whether the number is worth anything. One
+unanswered mention is 0% reciprocity and a bot likelihood of 1.00. Two accounts
+that each mentioned a single newspaper have a target overlap of 1.00. A post
+containing no word from the lexicon balances to a sentiment of exactly 0.00 and
+files itself beside a weather report, whatever it actually said. All four of
+those now record **no score** and a reason saying why, below
+`SOCIAL_MIN_INTERACTIONS` and `SOCIAL_MIN_SHARED_TARGETS` (both 3).
+
+The console draws an unscored account **hollow** in the graph and writes *"n
+accounts carry no score — too little graph to judge on, not a clean bill of
+health"* beside the flag count. A null that renders as green is an account the
+scorer refused to judge, shown in the colour of one it cleared.
+
+**Campaign detection** (`social/campaigns.py`) answers the question a
+per-account coordination score cannot: not *does anyone else hit the same
+targets as this account*, but *who are the five of them*. A campaign is a group
+of accounts that all interact with the same three or more accounts. Two rules
+keep it from flattering itself:
+
+* **A cluster must have a common core.** Linking accounts pairwise and taking
+  the connected components lets A join C through B with nothing in common, and
+  a long enough chain eventually swallows the whole graph into one "campaign".
+  A component whose members do not *all* share enough targets is refused.
+* **What is refused is recorded.** `CampaignRun` logs every pass, including the
+  ones that found nothing, with notes explaining what was examined and where it
+  stopped. An empty campaign list and a detector nobody has run look identical
+  otherwise, and only one of them means there is nothing there.
+
+A campaign is keyed by its membership, so re-running updates the row rather
+than stacking a second copy, and a cluster a later pass does not find again is
+kept and marked stale rather than deleted — the graph changing underneath it is
+a fact about the capture.
+
+**Nothing here asserts intent**, and every cluster carries the line saying so.
+A press pack on one beat, a fan community around one account, and a paid
+amplification network are the same picture from this angle. The cluster is
+where an analyst starts looking, not what they conclude.
+
+```bash
+.venv/Scripts/python.exe manage.py seed_social_demo          # a synthetic graph
+.venv/Scripts/python.exe manage.py seed_social_demo --clear  # and remove it
+```
+
+The demo graph is `demo_`-prefixed and exercises all four outcomes at once: a
+ring that is reported, a chain that is refused, a reciprocated group that
+scores low, and accounts too thin to judge.
+
+## Module 4: has this image been altered?
+
+`media/forensics.py` is real forensics on Pillow alone — no model, no service.
+It reads the JPEG quantisation tables, the metadata, the dimensions and the
+recompression history, and it runs error level analysis.
+
+**The interesting part is when it refuses to run ELA.** Error level analysis
+compares an image against a recompression of itself; regions that have been
+pasted in compress differently from regions that have not. That reasoning holds
+for an image compressed once. It does not hold for a PNG, which has no JPEG
+history to compare against, nor for an image saved five times by five apps, nor
+for one whose quantisation tables show it was already recompressed at a quality
+far from the one we would test at. In each of those the ELA image is bright and
+meaningless — and a bright ELA image is *extremely* persuasive to look at.
+
+So ELA is scored only where its assumptions hold, and where they do not the
+result says which assumption failed instead of producing a number. Every
+finding carries its points as `{label, points}`, so a verdict is a sum an
+analyst can argue with rather than an assertion.
+
+## Module 5: where did this happen, and what does the report say?
+
+`reportgis/` runs with **no spatial database, no GDAL, and no geocoding
+service**. `GeoEvent` stores plain latitude and longitude floats, and
+`reportgis/gazetteer.py` is a place-name table compiled into the source. A name
+the table does not carry is reported as *not found*; it is never sent anywhere.
+That is why every module reports online on a machine with nothing installed —
+the PostGIS `PointField` this model used to carry kept the whole app out of
+`INSTALLED_APPS` and drew an OFFLINE panel on the console.
+
+Extraction reads the entities Module 2 already found, so geolocation is a
+downstream reading of an analysed article rather than a second pass over its
+text. Each event records how it was placed — `located` or `limits` — and
+`ExtractionRun` logs every pass, including the ones that placed nothing, for
+the same reason `CampaignRun` does.
+
+**Reports are assembled, not generated.** `reportgis/reporting.py` builds
+Markdown out of counted figures — no prose is invented, and there is no model
+in the path. Every report carries a **Gaps** section listing what it cannot
+show: the articles that yielded no location, the events placed only to a
+country, the window that was empty. A report whose limitations are in the
+report is one an analyst can hand to somebody else.
 
 ## Layout
 
@@ -420,10 +601,18 @@ content/          ContentItem, and the fetcher that fills it
   pipeline.py     NER / topics / summary (heuristic stand-in)
   corroborate.py  search + deep-read other outlets -> a 0-10 rating
   claims.py       the article's own figures, checked against their text
+  factcheck.py    published fact-checks, key-gated; null client by default
   reference_outlets.py  newsrooms consulted whether or not they are Sources
-social/           SocialAccount, InteractionEdge
+social/           SocialAccount, InteractionEdge, SocialPost, Campaign
+  analysis.py     reciprocity and overlap scoring; abstains below its floors
+  campaigns.py    clusters of accounts hitting the same targets, and CampaignRun
+  management/commands/seed_social_demo.py  a synthetic graph for the console
 media/            MediaItem, TamperingResult
-reportgis/        GeoEvent (PostGIS PointField), Report — needs GDAL/GEOS
+  forensics.py    ELA, JPEG quantisation tables, metadata; Pillow only
+reportgis/        GeoEvent, Report, ExtractionRun — plain lat/lon, no GDAL
+  gazetteer.py    the place-name table, compiled into the source
+  geocode.py      name -> coordinates, reporting what it could not place
+  reporting.py    Markdown reports assembled from counted figures
 security/         AuditLogEntry
 frontend/         Vite + React analyst console, proxies /api to Django on :8000
   src/api.js      JWT client with transparent token refresh
@@ -456,9 +645,13 @@ legible console: the glitch, scanline, and cursor effects switch off.
 
 ## Prerequisites
 
-Only Python 3.11 and Node.js. There is deliberately **no server to install** for
-local work — the database is SQLite and Celery uses kombu's filesystem transport
-with results stored in the database.
+Only Python 3.11 and Node.js. There is deliberately **no server to install**
+for local work: the database is SQLite, Celery uses kombu's filesystem
+transport with results stored in the database, geolocation resolves against a
+table compiled into the source, and image forensics needs nothing beyond
+Pillow. No module requires an API key to run; the one optional key — for
+published fact-checks — leaves its layer reporting *switched off* rather than
+failing when it is absent.
 
 ## Setup
 
@@ -469,7 +662,7 @@ cp .env.example .env      # then set SECRET_KEY
 .venv/Scripts/python.exe manage.py createsuperuser
 ```
 
-## Switching to Postgres / PostGIS / Redis
+## Switching to Postgres / Redis
 
 Everything above is env-driven, so moving to real infrastructure is a `.env`
 change plus the installs:
@@ -477,21 +670,23 @@ change plus the installs:
 | Setting | Local default | Production |
 | --- | --- | --- |
 | `DB_BACKEND` | `sqlite` | `postgres` (+ `DB_NAME`/`DB_USER`/`DB_PASSWORD`) |
-| `USE_GIS` | `False` | `True` — needs GDAL/GEOS (OSGeo4W) and a spatial DB |
 | `CELERY_BROKER_URL` | `filesystem://` | `redis://localhost:6379/0` |
-
-`USE_GIS=False` drops `django.contrib.gis` **and the whole `reportgis` app**, so
-a database migrated with it off has no `GeoEvent`/`Report` tables. Turning it on
-means installing the spatial libraries and re-running `migrate`.
-
-With PostGIS, create the database and enable the extension once:
 
 ```sql
 CREATE DATABASE osint_sentry;
-\c osint_sentry
-CREATE EXTENSION postgis;
-SELECT PostGIS_version();
 ```
+
+**There is no `USE_GIS` switch and no PostGIS requirement.** There used to be
+both. `GeoEvent` stored a PostGIS `PointField`, which meant `django.contrib.gis`
+had to be importable, which meant a machine without GDAL dropped the entire
+`reportgis` app out of `INSTALLED_APPS` — and the console drew Module 5 as
+OFFLINE on every machine that had not installed OSGeo4W. The geometry is two
+float columns now and the app loads everywhere, which is the right trade for a
+platform whose spatial work is "put a dot on a map".
+
+If you later need real spatial queries — distance, containment, projections —
+that is the point to bring PostGIS back, and it is a migration on two columns
+rather than a rewrite.
 
 ## Running
 
@@ -537,15 +732,33 @@ Smoke-test the worker:
 | `POST /api/credibility/inspections/clear/` | JWT | hide the safety log; optional `source` clears one site |
 | `POST /api/credibility/inspections/restore/` | JWT | undo a clear |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
+| `GET /api/content/summary/` | JWT | corpus-wide counts, incl. `unchecked`; counted in the DB, not from the page |
 | `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
-| `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating and its evidence |
+| `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating, its evidence, and any published fact-checks |
 | `GET /api/content/corroborations/` | JWT | the log of credibility checks, newest first |
 | `POST /api/content/ingest/` | JWT | submit a document you already have; 409 if the gate rejects it |
 | `POST /api/content/{id}/analyze/` | JWT | re-run analysis |
-| `GET /api/social/accounts/` | JWT | accounts with bot-likelihood and coordination scores |
+| `GET /api/social/accounts/` | JWT | accounts with bot-likelihood and coordination scores; `null` where the scorer declined |
+| `GET /api/social/accounts/summary/` | JWT | counts incl. `accounts_unscored`; counted in the DB, not from the page |
 | `GET /api/social/accounts/flagged/` | JWT | accounts over a bot-likelihood threshold |
 | `GET /api/social/posts/` | JWT | posts with sentiment and toxicity |
-| `POST /api/social/refresh-scores/` | JWT | queue a full graph rescore |
+| `POST /api/social/refresh-scores/` | JWT | rescore the whole graph, inline |
+| `GET /api/social/campaigns/` | JWT | detected clusters, with the working behind each |
+| `POST /api/social/campaigns/detect/` | JWT | run detection, inline |
+| `GET /api/social/campaigns/latest_run/` | JWT | the last pass, its notes, and how many clusters it did not find again |
+| `GET /api/social/campaign-runs/` | JWT | every detection pass, including the ones that found nothing |
+| `GET /api/media/items/` `.../results/` | JWT | uploaded media and their tampering results |
+| `POST /api/media/items/{id}/analyze/` | JWT | run forensics on one item, inline |
+| `POST /api/media/items/analyze-pending/` | JWT | analyse everything not yet analysed |
+| `GET /api/media/items/engine/` | JWT | which analyzer is configured and what it can do |
+| `GET /api/reportgis/events/` | JWT | located events with their confidence and working |
+| `GET /api/reportgis/events/geojson/` | JWT | the same events as GeoJSON |
+| `GET /api/reportgis/events/summary/` | JWT | counts by confidence; counted in the DB |
+| `POST /api/reportgis/events/extract/` | JWT | locate places in analysed articles, inline |
+| `GET /api/reportgis/extractions/` | JWT | every extraction pass, including the empty ones |
+| `POST /api/reportgis/reports/preview/` | JWT | what a report would contain, without writing one |
+| `POST /api/reportgis/reports/generate/` | JWT | build a report; `GET .../{id}/download/` for the file |
+| `GET /api/overview/` | JWT | the dashboard's per-module counts |
 | `/admin/` | session | inspect all models |
 
 ## How the modules connect
@@ -560,10 +773,27 @@ Smoke-test the worker:
 3. A stored `ContentItem` queues `analyze_content`, which writes entities,
    topics, and a summary. Re-running replaces prior output instead of
    duplicating it.
-4. `refresh_graph_scores` rebuilds the interaction graph and rescores every
-   account in one bulk update.
-5. Every model write outside the excluded apps lands in `AuditLogEntry` with
+4. `analyze_content` then hands the analysed article to Module 5's
+   `locate_content_item`, so the map fills as content arrives rather than
+   waiting for someone to press a button. That call is guarded: a geocoder
+   that breaks must not take a finished analysis down with it, and Module 2
+   must keep working if Module 5 is removed entirely.
+5. Corroborating an article reads Module 1's score for both the article's own
+   source and every outlet that matched it, so a rating is weighted by who is
+   doing the corroborating. The fact-check lookup runs alongside and
+   independently — a fact-checker's ruling is worth citing whether or not the
+   news search succeeded.
+6. `refresh_graph_scores` rebuilds the interaction graph and rescores every
+   account in one bulk update; `detect_campaigns` then reads the same graph
+   for clusters and writes a `CampaignRun` whether or not it found any.
+7. Every model write outside the excluded apps lands in `AuditLogEntry` with
    the acting user, IP, and a field-level diff.
+
+**Analyst-triggered actions run inline, not queued.** The default broker is
+`filesystem://` with no worker attached, so a queued action would return
+202 Accepted to a console that then redraws the numbers it already had — the
+button would look like it worked and would have done nothing. `.delay()` is
+for the scheduled sweeps below, where nobody is waiting on the answer.
 
 Periodic work is registered with Celery Beat (`DatabaseScheduler`, so schedules
 are editable in the admin): hourly ingest, nightly rescore, nightly graph

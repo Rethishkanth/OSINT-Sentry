@@ -128,7 +128,7 @@ def overview(request):
     """
     from django.conf import settings
 
-    from content.models import ContentItem, Entity
+    from content.models import ContentItem, Corroboration, Entity
     from credibility.models import CredibilityScore
     from media.models import MediaItem, TamperingResult
     from reportgis.models import ExtractionRun, GeoEvent, Report
@@ -147,12 +147,25 @@ def overview(request):
             'sources': Source.objects.count(),
             'model_version': settings.CREDIBILITY_SCORER.rsplit('.', 1)[-1],
         },
+        # Ordered for the same reason the social dict below is: the panel
+        # renders three sub-metrics and drops the rest. `unchecked` — articles
+        # nobody has cross-referenced — sits beside `analyzed` because an
+        # unchecked article is not a cleared one, and `entities` is a volume
+        # figure that changes nothing an analyst does.
         'content': {
             'online': True,
             'items': ContentItem.objects.count(),
-            'entities': Entity.objects.count(),
             'analyzed': ContentItem.objects.filter(
                 status=ContentItem.Status.ANALYZED
+            ).count(),
+            'unchecked': (
+                ContentItem.objects.count()
+                - Corroboration.objects.values('content_item').distinct().count()
+            ),
+            'entities': Entity.objects.count(),
+            'checks': Corroboration.objects.count(),
+            'fact_checked': Corroboration.objects.filter(
+                fact_check_status=Corroboration.FactCheckStatus.FOUND
             ).count(),
             'model_version': settings.CONTENT_ANALYZER.rsplit('.', 1)[-1],
         },

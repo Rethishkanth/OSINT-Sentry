@@ -11,6 +11,7 @@ feed is 400MB, and when a page is mostly navigation.
 from __future__ import annotations
 
 import time
+import urllib.error
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
@@ -20,7 +21,7 @@ from django.utils import timezone
 from core.models import Source
 from credibility.models import CredibilityScore, TrustTier
 
-from . import corroborate, http, robots
+from . import corroborate, factcheck, http, robots
 from .extract import extract_article, parse_datetime, strip_html
 from .feeds import FeedError, looks_like_feed, parse_feed
 from .fetchers import FeedStatus, WebFetcher
@@ -1277,3 +1278,419 @@ class ReferenceOutletTests(SimpleTestCase):
         for domain, url, label in REFERENCE_FEEDS:
             self.assertTrue(url.startswith('https://'), f'{domain} feed must be https')
             self.assertTrue(label, f'{domain} needs a readable label')
+
+
+# ---------------------------------------------------------------------------
+# Published fact-checks (content.factcheck)
+# ---------------------------------------------------------------------------
+
+def claim_payload(*rows):
+    """Build a Fact Check Tools response. Each row is (claim, publisher, rating)."""
+    return {
+        'claims': [
+            {
+                'text': claim,
+                'claimant': 'a politician',
+                'claimReview': [{
+                    'publisher': {'name': publisher, 'site': f'{publisher.lower()}.org'},
+                    'url': f'https://{publisher.lower()}.org/check',
+                    'title': f'Fact check: {claim[:40]}',
+                    'textualRating': rating,
+                    'reviewDate': '2026-09-01T00:00:00Z',
+                    'languageCode': 'en',
+                }],
+            }
+            for claim, publisher, rating in rows
+        ]
+    }
+
+
+class RatingBucketTests(SimpleTestCase):
+    """Fact-checkers write their own scales, and several are jokes.
+
+    A rating bucketed wrongly towards FALSE puts an accusation on an analyst's
+    screen, so anything unrecognised must stay UNRATED rather than be guessed.
+    """
+
+    def test_the_obvious_ones(self):
+        for text in ('False', 'Fake', 'Hoax', 'Fabricated', 'Debunked', 'Incorrect'):
+            self.assertEqual(factcheck.FALSE, factcheck.normalise_rating(text), text)
+
+    def test_the_publishers_own_idioms(self):
+        for text in ('Pants on Fire', 'Four Pinocchios', 'Altered photo', 'Scam'):
+            self.assertEqual(factcheck.FALSE, factcheck.normalise_rating(text), text)
+
+    def test_mostly_false_is_not_read_as_false_by_accident(self):
+        # It lands in the same bucket, but via its own rule — the ordering
+        # matters for its mirror image below.
+        self.assertEqual(factcheck.FALSE, factcheck.normalise_rating('Mostly False'))
+
+    def test_mostly_true_is_not_read_as_true(self):
+        """The one the rule order exists for.
+
+        A bare `true` search would match inside "Mostly true" and report a
+        qualified rating as an endorsement.
+        """
+        self.assertEqual(factcheck.MIXED, factcheck.normalise_rating('Mostly true'))
+        self.assertEqual(factcheck.MIXED, factcheck.normalise_rating('Half True'))
+        self.assertEqual(factcheck.MIXED, factcheck.normalise_rating('Misleading'))
+
+    def test_a_rating_we_cannot_read_stays_unrated(self):
+        for text in ('Flip flop', 'Research in progress', 'Spins the facts', ''):
+            self.assertEqual(factcheck.UNRATED, factcheck.normalise_rating(text), text)
+
+    def test_true_is_recognised(self):
+        self.assertEqual(factcheck.TRUE, factcheck.normalise_rating('Correct'))
+        self.assertEqual(factcheck.TRUE, factcheck.normalise_rating('True'))
+
+
+class FactCheckClientTests(SimpleTestCase):
+    """The key gate, and the four ways of finding nothing."""
+
+    def test_the_null_client_reports_disabled_not_empty(self):
+        outcome = factcheck.NullFactCheckClient().search(['mumbai', 'flooding'])
+        self.assertEqual(factcheck.Status.DISABLED, outcome.status)
+        self.assertFalse(outcome.available)
+        self.assertIn('switched off', outcome.detail)
+
+    def test_no_key_makes_no_request_at_all(self):
+        """An unauthenticated call returns 403, which would read as an outage."""
+        client = factcheck.GoogleFactCheckClient(api_key='')
+        with patch.object(client, '_fetch') as fetch:
+            outcome = client.search(['mumbai', 'flooding'])
+        fetch.assert_not_called()
+        self.assertEqual(factcheck.Status.NO_KEY, outcome.status)
+        self.assertFalse(outcome.available)
+
+    def test_a_failed_lookup_is_unavailable_not_none_found(self):
+        client = factcheck.GoogleFactCheckClient(api_key='k')
+        with patch.object(client, '_fetch', return_value=(None, 'the API returned HTTP 500.')):
+            outcome = client.search(['mumbai', 'flooding'])
+        self.assertEqual(factcheck.Status.UNAVAILABLE, outcome.status)
+        self.assertFalse(outcome.available)
+        self.assertIn('500', outcome.detail)
+
+    def test_an_empty_index_answer_is_none_found_and_counts_as_available(self):
+        client = factcheck.GoogleFactCheckClient(api_key='k')
+        with patch.object(client, '_fetch', return_value=({'claims': []}, '')):
+            outcome = client.search(['mumbai', 'flooding'])
+        self.assertEqual(factcheck.Status.NONE_FOUND, outcome.status)
+        self.assertTrue(outcome.available)
+
+    def test_a_rejected_key_says_so_rather_than_blaming_the_network(self):
+        client = factcheck.GoogleFactCheckClient(api_key='bad')
+        error = urllib.error.HTTPError('u', 403, 'Forbidden', {}, None)
+        with patch('urllib.request.urlopen', side_effect=error):
+            outcome = client.search(['mumbai', 'flooding'])
+        self.assertEqual(factcheck.Status.UNAVAILABLE, outcome.status)
+        self.assertIn('rejected the key', outcome.detail)
+
+    def test_several_publishers_reviewing_one_claim_are_all_kept(self):
+        payload = {'claims': [{
+            'text': 'Mumbai flooding closed the rail lines',
+            'claimReview': [
+                {'publisher': {'name': 'Full Fact'}, 'textualRating': 'False'},
+                {'publisher': {'name': 'Boom Live'}, 'textualRating': 'Misleading'},
+            ],
+        }]}
+        reviews = factcheck.GoogleFactCheckClient._reviews_in(payload)
+        self.assertEqual(2, len(reviews))
+        self.assertEqual({'Full Fact', 'Boom Live'}, {r.publisher for r in reviews})
+
+    def test_the_publishers_wording_survives_bucketing(self):
+        client = factcheck.GoogleFactCheckClient(api_key='k')
+        payload = claim_payload(
+            ('Mumbai flooding closed the rail lines', 'Politifact', 'Pants on Fire'),
+        )
+        with patch.object(client, '_fetch', return_value=(payload, '')):
+            outcome = client.search(['mumbai', 'flooding'])
+        review = outcome.reviews[0]
+        self.assertEqual('Pants on Fire', review.rating)
+        self.assertEqual(factcheck.FALSE, review.verdict)
+
+
+class FactCheckMatchingTests(SimpleTestCase):
+    """The weak link: we match on search terms, not on the claim itself."""
+
+    def review(self, claim, rating='False'):
+        return factcheck.FactCheckReview(
+            claim=claim, rating=rating, verdict=factcheck.normalise_rating(rating),
+            publisher='Full Fact',
+        )
+
+    def test_one_shared_term_is_a_coincidence_and_is_dropped(self):
+        kept = factcheck.rank(
+            [self.review('A photo of Mumbai traffic is from 2019')],
+            ['mumbai', 'flooding', 'railways'],
+        )
+        self.assertEqual([], kept)
+
+    def test_most_of_the_terms_present_is_a_close_match(self):
+        kept = factcheck.rank(
+            [self.review('Mumbai flooding shut the railways this week')],
+            ['mumbai', 'flooding', 'railways'],
+        )
+        self.assertEqual(1, len(kept))
+        self.assertTrue(kept[0].close_match)
+        self.assertEqual(1.0, kept[0].match_strength)
+
+    def test_a_partial_overlap_is_kept_but_labelled_loose(self):
+        kept = factcheck.rank(
+            [self.review('Mumbai flooding was caused by a dam release')],
+            ['mumbai', 'flooding', 'railways', 'monsoon'],
+        )
+        self.assertEqual(1, len(kept))
+        self.assertFalse(kept[0].close_match)
+
+    def test_only_close_negative_matches_are_counted_as_negative(self):
+        outcome = factcheck.FactCheckOutcome(
+            reviews=factcheck.rank(
+                [
+                    self.review('Mumbai flooding shut the railways', 'False'),
+                    self.review('Mumbai flooding was caused by a dam', 'False'),
+                ],
+                ['mumbai', 'flooding', 'railways', 'monsoon'],
+            ),
+            status=factcheck.Status.FOUND,
+        )
+        self.assertEqual(2, len(outcome.reviews))
+        self.assertEqual(1, len(outcome.negative))
+
+    def test_a_close_match_rated_true_is_not_negative(self):
+        outcome = factcheck.FactCheckOutcome(
+            reviews=factcheck.rank(
+                [self.review('Mumbai flooding shut the railways', 'Correct')],
+                ['mumbai', 'flooding', 'railways'],
+            ),
+            status=factcheck.Status.FOUND,
+        )
+        self.assertEqual([], outcome.negative)
+
+
+def stub_fact_check(outcome):
+    class _Stub(factcheck.BaseFactCheckClient):
+        def search(self, terms, language=''):
+            return outcome
+    return _Stub()
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None, CORROBORATION_DEEP_READS=0)
+class FactCheckInReportTests(TestCase):
+    """What the layer does to a report — which, for the number, is nothing."""
+
+    def setUp(self):
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=70.0, trust_tier=TrustTier.HIGH
+        )
+        self.item = ContentItem.objects.create(
+            source=self.source,
+            url='https://examplenews.com/mumbai-floods',
+            title='Mumbai floods close three rail lines',
+            body=FLOOD_STORY,
+            published_at=timezone.now(),
+        )
+        from .tasks import analyze_content
+        analyze_content.run(self.item.pk)
+        self.item.refresh_from_db()
+
+    def _assess(self, outcome, candidates=()):
+        with patch('content.corroborate.get_search', return_value=stub_search(list(candidates))), \
+                patch('content.factcheck.get_fact_check_client',
+                      return_value=stub_fact_check(outcome)):
+            return corroborate.assess(self.item)
+
+    def found(self, rating='False', close=True):
+        review = factcheck.FactCheckReview(
+            claim='Mumbai flooding closed the rail lines',
+            rating=rating, verdict=factcheck.normalise_rating(rating),
+            publisher='Full Fact', url='https://fullfact.org/check',
+            close_match=close, match_strength=1.0 if close else 0.4,
+        )
+        return factcheck.FactCheckOutcome(
+            reviews=[review], status=factcheck.Status.FOUND,
+            detail='one matched', searched='Google Fact Check Tools',
+        )
+
+    def test_a_fact_check_does_not_move_the_rating(self):
+        """The rule the whole layer is built around.
+
+        The match is made on search terms. A number that shifts on a keyword
+        overlap is a guess with a decimal point on it, so the arithmetic is
+        identical with and without the fact-check.
+        """
+        clean = self._assess(factcheck.FactCheckOutcome(status=factcheck.Status.NONE_FOUND))
+        damning = self._assess(self.found('False'))
+        self.assertEqual(clean.score, damning.score)
+        self.assertEqual(clean.verdict, damning.verdict)
+
+    def test_the_fact_check_line_carries_no_contribution(self):
+        """It must not appear as a term in the column of contributions."""
+        result = self._assess(self.found('False'))
+        line = next(r for r in result.reasons if r.label == 'Published fact-checks')
+        self.assertIsNone(line.effect)
+        self.assertIn('Full Fact', line.detail)
+        self.assertIn('does not change the rating', line.detail)
+
+    def test_a_loose_match_is_not_presented_as_a_ruling(self):
+        result = self._assess(self.found('False', close=False))
+        line = next(r for r in result.reasons if r.label == 'Published fact-checks')
+        self.assertIn('none closely enough', line.detail)
+
+    def test_switched_off_reads_as_switched_off_not_as_nothing_found(self):
+        result = self._assess(factcheck.FactCheckOutcome(status=factcheck.Status.DISABLED,
+                                                         detail='Fact-check lookup is switched off.'))
+        self.assertEqual(factcheck.Status.DISABLED, result.fact_check_status)
+        line = next(r for r in result.reasons if r.label == 'Published fact-checks')
+        self.assertIn('switched off', line.detail)
+
+    def test_the_lookup_still_runs_when_the_news_search_failed(self):
+        """A fact-checker's ruling is worth citing even if GDELT rate-limited us.
+
+        The two lookups are independent, and suppressing one because the other
+        failed would hide the better evidence behind the worse.
+        """
+        with patch('content.corroborate.get_search',
+                   return_value=stub_search([], available=False)), \
+                patch('content.factcheck.get_fact_check_client',
+                      return_value=stub_fact_check(self.found('False'))):
+            result = corroborate.assess(self.item)
+
+        self.assertIsNone(result.score)
+        self.assertEqual(factcheck.Status.FOUND, result.fact_check_status)
+        self.assertEqual(1, len(result.fact_checks))
+
+    def test_a_client_that_raises_does_not_take_the_rating_down_with_it(self):
+        class _Broken(factcheck.BaseFactCheckClient):
+            def search(self, terms, language=''):
+                raise RuntimeError('boom')
+
+        with patch('content.corroborate.get_search', return_value=stub_search([])), \
+                patch('content.factcheck.get_fact_check_client', return_value=_Broken()), \
+                self.assertLogs('content.corroborate', level='ERROR'):
+            result = corroborate.assess(self.item)
+
+        self.assertIsNotNone(result.score)
+        self.assertEqual(factcheck.Status.UNAVAILABLE, result.fact_check_status)
+
+    def test_the_report_stores_the_publishers_words_and_the_counts(self):
+        from .models import Corroboration, FactCheckMatch
+        from .tasks import corroborate_item
+
+        with patch('content.corroborate.get_search', return_value=stub_search([])), \
+                patch('content.factcheck.get_fact_check_client',
+                      return_value=stub_fact_check(self.found('Pants on Fire'))):
+            report_id = corroborate_item.run(self.item.pk)
+
+        report = Corroboration.objects.get(pk=report_id)
+        self.assertEqual(Corroboration.FactCheckStatus.FOUND, report.fact_check_status)
+        self.assertEqual(1, report.fact_checks_found)
+        self.assertEqual(1, report.fact_checks_negative)
+
+        row = FactCheckMatch.objects.get(report=report)
+        self.assertEqual('Pants on Fire', row.rating)
+        self.assertEqual(FactCheckMatch.Verdict.FALSE, row.verdict)
+        self.assertTrue(row.close_match)
+
+    def test_a_loose_match_is_stored_but_not_counted_as_negative(self):
+        from .models import Corroboration
+        from .tasks import corroborate_item
+
+        with patch('content.corroborate.get_search', return_value=stub_search([])), \
+                patch('content.factcheck.get_fact_check_client',
+                      return_value=stub_fact_check(self.found('False', close=False))):
+            report_id = corroborate_item.run(self.item.pk)
+
+        report = Corroboration.objects.get(pk=report_id)
+        self.assertEqual(1, report.fact_checks_found)
+        self.assertEqual(0, report.fact_checks_negative)
+
+
+class FactCheckResolverTests(SimpleTestCase):
+    def test_the_default_client_contacts_nobody(self):
+        """A fresh clone has no API key. It must not fail a check over that."""
+        self.assertIsInstance(
+            factcheck.get_fact_check_client(), factcheck.NullFactCheckClient
+        )
+
+    @override_settings(CONTENT_FACT_CHECK_CLIENT='content.factcheck.GoogleFactCheckClient')
+    def test_the_google_client_is_reachable_by_its_dotted_path(self):
+        self.assertIsInstance(
+            factcheck.get_fact_check_client(), factcheck.GoogleFactCheckClient
+        )
+
+
+@override_settings(CONTENT_MIN_CREDIBILITY=None)
+class ContentSummaryTests(TestCase):
+    """Headline counts come from the database, not from the rows on screen."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        user = get_user_model().objects.create_user('analyst2', password='x' * 24)
+        self.client = APIClient()
+        self.client.force_authenticate(user=user)
+        self.source = Source.objects.create(domain='examplenews.com')
+        CredibilityScore.objects.create(
+            source=self.source, credibility_score=70.0, trust_tier=TrustTier.HIGH
+        )
+
+    def test_the_summary_counts_past_the_page_size(self):
+        """The list endpoint pages at 25 and has no page-size parameter.
+
+        A console panel built from `rows.length` reports 25 on a corpus of any
+        size above 25, and looks entirely plausible doing it.
+        """
+        for n in range(30):
+            ContentItem.objects.create(
+                source=self.source, url=f'https://examplenews.com/{n}', title=f'Story {n}'
+            )
+
+        listed = self.client.get('/api/content/').json()
+        summary = self.client.get('/api/content/summary/').json()
+
+        self.assertEqual(25, len(listed['results']))
+        self.assertEqual(30, summary['items'])
+
+    def test_unchecked_counts_the_articles_nobody_has_cross_referenced(self):
+        from .models import Corroboration
+
+        a = ContentItem.objects.create(
+            source=self.source, url='https://examplenews.com/a', title='A'
+        )
+        ContentItem.objects.create(
+            source=self.source, url='https://examplenews.com/b', title='B'
+        )
+        # Two checks on one article is still one article checked.
+        Corroboration.objects.create(content_item=a, score=7.0)
+        Corroboration.objects.create(content_item=a, score=7.2)
+
+        summary = self.client.get('/api/content/summary/').json()
+        self.assertEqual(1, summary['checked'])
+        self.assertEqual(1, summary['unchecked'])
+        self.assertEqual(2, summary['checks'])
+
+    def test_the_summary_says_whether_fact_checking_is_switched_on(self):
+        """Otherwise a zero in the panel means both "none" and "not looking"."""
+        summary = self.client.get('/api/content/summary/').json()
+        self.assertFalse(summary['fact_check_enabled'])
+
+    @override_settings(CONTENT_FACT_CHECK_CLIENT='content.factcheck.GoogleFactCheckClient')
+    def test_the_summary_reports_the_layer_as_on_when_it_is(self):
+        summary = self.client.get('/api/content/summary/').json()
+        self.assertTrue(summary['fact_check_enabled'])
+
+    def test_the_dashboard_shows_the_unchecked_beside_the_analyzed(self):
+        """The overview panel renders three sub-metrics and drops the rest."""
+        ContentItem.objects.create(
+            source=self.source, url='https://examplenews.com/a', title='A'
+        )
+
+        content = self.client.get('/api/overview/').json()['modules']['content']
+        shown = [
+            key for key in content
+            if key not in ('online', 'items', 'model_version')
+        ][:3]
+        self.assertIn('unchecked', shown)
+        self.assertEqual(1, content['unchecked'])

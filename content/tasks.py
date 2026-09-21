@@ -19,6 +19,7 @@ from .models import (
     Corroboration,
     CorroborationMatch,
     Entity,
+    FactCheckMatch,
     Topic,
 )
 from .pipeline import get_analyzer
@@ -242,7 +243,36 @@ def corroborate_item(content_item_id):
             claims_checked=result.claims_checked,
             claims_agreed=result.claims_agreed,
             claims_disputed=result.claims_disputed,
+            fact_check_status=result.fact_check_status,
+            fact_check_detail=result.fact_check_detail,
+            fact_checks_found=len(result.fact_checks),
+            # Only close matches rated false or partly false. A loose match is
+            # stored and shown, but it does not increment the count the
+            # console puts a warning colour on.
+            fact_checks_negative=sum(
+                1 for review in result.fact_checks
+                if review.close_match and review.verdict in ('false', 'mixed')
+            ),
             engine_version=result.engine_version,
+        )
+        FactCheckMatch.objects.bulk_create(
+            FactCheckMatch(
+                report=report,
+                publisher=review.publisher[:255],
+                publisher_site=review.publisher_site[:255],
+                claim=review.claim,
+                claimant=review.claimant[:255],
+                rating=review.rating[:255],
+                verdict=review.verdict,
+                url=review.url[:1000],
+                title=review.title[:500],
+                reviewed_at=review.reviewed_at,
+                language=review.language[:8],
+                matched_terms=review.matched_terms,
+                match_strength=review.match_strength,
+                close_match=review.close_match,
+            )
+            for review in result.fact_checks
         )
         tracked = {
             s.domain: s for s in Source.objects.filter(

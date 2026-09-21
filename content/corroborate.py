@@ -863,6 +863,12 @@ class CorroborationResult:
     claims_agreed: int = 0
     claims_disputed: int = 0
     outlets_read: int = 0          # other outlets fetched in full, not skimmed
+    # Published fact-checks about the same subject. Reported beside the score
+    # and deliberately absent from the arithmetic that produced it; see
+    # content.factcheck for why a keyword match must not move a number.
+    fact_checks: list = field(default_factory=list)
+    fact_check_status: str = 'disabled'
+    fact_check_detail: str = ''
     engine_version: str = ENGINE_VERSION
 
 
@@ -1043,6 +1049,63 @@ def _independent(candidates: list[Candidate]) -> list[Candidate]:
     return sorted(by_domain.values(), key=lambda c: (-c.similarity, -(c.credibility or 0)))
 
 
+def fact_check_lookup(keywords: list[str], language: str = ''):
+    """Ask the configured fact-check client, and never let it break a check.
+
+    The rest of the report does not depend on this layer, so a client that
+    raises — a bad dotted path in settings, a library that changed under us —
+    degrades to `unavailable` rather than taking the whole rating down with
+    it. The exception is logged, not swallowed silently.
+    """
+    from .factcheck import FactCheckOutcome, Status, get_fact_check_client
+
+    try:
+        return get_fact_check_client().search(keywords, language)
+    except Exception as exc:
+        logger.exception('Fact-check lookup failed: %s', exc)
+        return FactCheckOutcome(
+            status=Status.UNAVAILABLE,
+            detail=f'The fact-check lookup raised {exc.__class__.__name__} and '
+                   'was skipped. The rest of this check is unaffected.',
+        )
+
+
+def fact_check_reason(outcome) -> Reason:
+    """One line of working for the fact-check layer.
+
+    `effect` is always None. That is the point: this line is a citation, not a
+    term in the sum, and an analyst reading the column of contributions must
+    not find a number here implying the rating already accounts for it.
+    """
+    from .factcheck import Status
+
+    if outcome.status == Status.FOUND:
+        close = outcome.close
+        if close:
+            named = '; '.join(
+                f'{r.publisher or "a fact-checker"} rated "{r.claim[:90]}" '
+                f'{r.rating or "with no stated rating"}'
+                for r in close[:3]
+            )
+            extra = len(outcome.reviews) - len(close)
+            detail = (
+                f'{named}. {outcome.detail}'
+                + (f' {extra} looser match(es) are listed with the report.' if extra else '')
+                + ' This does not change the rating above: the match was made '
+                'on search terms, and only reading the fact-check can tell you '
+                'whether it addresses this article\'s claim.'
+            )
+        else:
+            detail = (
+                f'{len(outcome.reviews)} published fact-check(s) share some of '
+                'this story\'s terms, but none closely enough to be treated as '
+                'a ruling on it. Listed with the report as leads.'
+            )
+        return Reason('Published fact-checks', detail)
+
+    return Reason('Published fact-checks', outcome.detail)
+
+
 def assess(item) -> CorroborationResult:
     """Rate one ContentItem out of 10, and show the working.
 
@@ -1065,6 +1128,12 @@ def assess(item) -> CorroborationResult:
 
     outcome = get_search().search(keywords, item.published_at, own_domain)
 
+    # Asked independently of the news search, and answered independently: a
+    # published fact-check is worth citing whether or not the corroboration
+    # lookup succeeded, and it would be perverse to hide a fact-checker's
+    # ruling because GDELT happened to be rate-limiting us.
+    fact_check = fact_check_lookup(keywords, item.language)
+
     def unavailable(reason: str, why: str) -> CorroborationResult:
         return CorroborationResult(
             score=None,
@@ -1079,7 +1148,11 @@ def assess(item) -> CorroborationResult:
             reasons=[
                 Reason('No rating given', why),
                 Reason('Terms searched', ', '.join(keywords) or 'no usable terms'),
+                fact_check_reason(fact_check),
             ],
+            fact_checks=fact_check.reviews,
+            fact_check_status=fact_check.status,
+            fact_check_detail=fact_check.detail,
         )
 
     if not outcome.available:
@@ -1225,10 +1298,16 @@ def assess(item) -> CorroborationResult:
             'there was nothing to compare the article\'s statements against.',
         ))
 
+    # Placed before "Where we looked" so a fact-checker's ruling is not the
+    # last line under a housekeeping note. It carries no `effect`, so it reads
+    # as evidence to follow up rather than as part of the sum.
+    reasons.append(fact_check_reason(fact_check))
+
     reasons.append(Reason(
         'Where we looked',
         f'{outcome.searched or "no index"}, for {", ".join(keywords) or "no usable terms"}. '
-        f'{len(outcome.candidates)} candidate(s) considered, {outlets_read} fetched in full.',
+        f'{len(outcome.candidates)} candidate(s) considered, {outlets_read} fetched in full.'
+        + (f' {fact_check.searched} also queried.' if fact_check.searched else ''),
     ))
     if outcome.failed or unreadable:
         notes = []
@@ -1265,4 +1344,7 @@ def assess(item) -> CorroborationResult:
         claims_agreed=claim_stats['agreed'],
         claims_disputed=claim_stats['disputed'],
         outlets_read=outlets_read,
+        fact_checks=fact_check.reviews,
+        fact_check_status=fact_check.status,
+        fact_check_detail=fact_check.detail,
     )

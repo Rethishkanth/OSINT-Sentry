@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 
 import { apiFetch } from '../api'
 import Panel from '../components/Panel'
@@ -83,6 +83,106 @@ function ClaimTable({ claims }) {
   )
 }
 
+// Published fact-checks. Only `false` and `mixed` get a warning colour, and
+// only on a close match — see FactChecks below for why that restraint matters.
+const FACTCHECK_TONE = {
+  false: 'var(--magenta)',
+  mixed: 'var(--yellow)',
+  true: 'var(--cyan)',
+  unrated: 'var(--text-dim)',
+}
+
+// Four of the five fact-check states render as an empty list, and they mean
+// four different things. Collapsing them into "no fact-checks found" tells an
+// analyst that nobody has disputed a story when in fact nobody has looked.
+const FACTCHECK_STATE = {
+  disabled: { tone: 'var(--text-dim)', text: 'Fact-check lookup is switched off.' },
+  no_key: { tone: 'var(--text-dim)', text: 'Fact-check lookup has no API key, so nothing was looked up.' },
+  unavailable: { tone: 'var(--yellow)', text: 'The fact-check lookup did not complete.' },
+  none_found: { tone: 'var(--text-dim)', text: 'No published fact-check covers this subject.' },
+  found: { tone: 'var(--cyan)', text: 'Published fact-checks share this subject.' },
+}
+
+/**
+ * Fact-checks published by other people about the same subject.
+ *
+ * This panel cites; it does not judge. The match is made on the article's
+ * search terms, so a hit means "somebody has written about something like
+ * this", and the only way to find out whether it addresses *this* article's
+ * claim is to open it and read. The rating above is deliberately unaffected by
+ * anything here, and the panel says so, because a reader who assumes the
+ * number already accounts for a fact-checker's ruling will discount it twice.
+ */
+function FactChecks({ report }) {
+  const state = FACTCHECK_STATE[report.fact_check_status] || FACTCHECK_STATE.disabled
+  const rows = report.fact_checks || []
+  const close = rows.filter((f) => f.close_match)
+  const loose = rows.filter((f) => !f.close_match)
+
+  return (
+    <>
+      <div className="metric-label" style={{ marginTop: 16 }}>
+        Published fact-checks
+      </div>
+      <div className="mono-dim" style={{ marginTop: 4, fontSize: 11, lineHeight: 1.6 }}>
+        <span style={{ color: state.tone }}>{state.text}</span>{' '}
+        {report.fact_check_detail}
+      </div>
+
+      {rows.length > 0 && (
+        <>
+          <div className="mono-dim" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.6 }}>
+            These do not change the rating above, in either direction. They were
+            matched on this story&apos;s search terms, and only reading one can tell
+            you whether it reviewed this article&apos;s actual claim.
+          </div>
+          <div className="table-wrap" style={{ marginTop: 8 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Fact-checker</th>
+                  <th>Their rating</th>
+                  <th>Match</th>
+                  <th>Claim they reviewed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...close, ...loose].map((f) => (
+                  <tr key={f.id} style={{ opacity: f.close_match ? 1 : 0.6 }}>
+                    <td className="mono-dim">{f.publisher || '—'}</td>
+                    {/* Their words, not our bucket. "Pants on Fire" and
+                        "Four Pinocchios" both bucket to false and both mean
+                        something more specific than that. */}
+                    <td style={{ color: FACTCHECK_TONE[f.verdict], whiteSpace: 'nowrap' }}>
+                      {f.rating || <span className="mono-dim">no stated rating</span>}
+                    </td>
+                    <td className="mono-dim" style={{ whiteSpace: 'nowrap' }}>
+                      {f.close_match
+                        ? `close · ${Math.round(f.match_strength * 100)}%`
+                        : `loose · ${Math.round(f.match_strength * 100)}%`}
+                    </td>
+                    <td style={{ maxWidth: 380, fontSize: 11 }}>
+                      {f.url
+                        ? <a href={f.url} target="_blank" rel="noreferrer noopener">{f.claim || f.title}</a>
+                        : (f.claim || f.title)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {loose.length > 0 && (
+            <div className="mono-dim" style={{ marginTop: 6, fontSize: 11, lineHeight: 1.6 }}>
+              The dimmed rows share only some of this story&apos;s terms. They are
+              leads to follow, not rulings on it.
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
 /** The corroboration rating out of 10, with its tag. */
 function Rating({ report, size = 22 }) {
   return (
@@ -130,6 +230,7 @@ function CredibilityChecks({ reports }) {
                 <th>Rating</th>
                 <th>Corroborating</th>
                 <th>Details checked</th>
+                <th>Fact-checks</th>
                 <th />
               </tr>
             </thead>
@@ -163,6 +264,25 @@ function CredibilityChecks({ reports }) {
                         )
                         : '—'}
                     </td>
+                    {/* Never a bare zero. "0" and "nobody looked" are the
+                        same glyph and not the same finding. */}
+                    <td className="mono-dim" style={{ whiteSpace: 'nowrap' }}>
+                      {r.fact_check_status === 'found'
+                        ? (
+                          <span style={{
+                            color: r.fact_checks_negative > 0 ? 'var(--magenta)' : 'var(--cyan)',
+                          }}
+                          >
+                            {r.fact_checks_found} found
+                            {r.fact_checks_negative > 0 && `, ${r.fact_checks_negative} negative`}
+                          </span>
+                        )
+                        : r.fact_check_status === 'none_found'
+                          ? 'none published'
+                          : r.fact_check_status === 'unavailable'
+                            ? <span style={{ color: 'var(--yellow)' }}>lookup failed</span>
+                            : 'not looked up'}
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -175,7 +295,7 @@ function CredibilityChecks({ reports }) {
                   </tr>
                   {openId === r.id && (
                     <tr>
-                      <td colSpan={7} style={{ background: 'rgba(0,0,0,0.35)' }}>
+                      <td colSpan={8} style={{ background: 'rgba(0,0,0,0.35)' }}>
                         <div style={{ padding: '4px 0 10px' }}>
                           <div className="metric-label">Keywords searched</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '6px 0 14px' }}>
@@ -213,9 +333,11 @@ function CredibilityChecks({ reports }) {
                             </>
                           )}
 
+                          <FactChecks report={r} />
+
                           {r.matches?.length > 0 && (
                             <>
-                              <div className="metric-label" style={{ marginTop: 10 }}>
+                              <div className="metric-label" style={{ marginTop: 16 }}>
                                 Matching coverage
                               </div>
                               <div className="table-wrap" style={{ marginTop: 6 }}>
@@ -394,6 +516,17 @@ export default function Content() {
   const [selectedId, setSelectedId] = useState(null)
   const [checking, setChecking] = useState(null)
   const [checkNote, setCheckNote] = useState(null)
+  // Counted server-side. The list endpoint pages at 25 and takes no page-size
+  // parameter, so headline panels built from the rows on screen report 25 on
+  // a corpus of any size above 25 — and look entirely plausible doing it.
+  const [totals, setTotals] = useState(null)
+
+  const loadTotals = useCallback(
+    () => apiFetch('/api/content/summary/').then(setTotals).catch(() => setTotals(null)),
+    [],
+  )
+
+  useEffect(() => { loadTotals() }, [loadTotals])
 
   const selected = items.rows.find((i) => i.id === selectedId) || items.rows[0] || null
 
@@ -403,6 +536,7 @@ export default function Content() {
     try {
       const report = await apiFetch(`/api/content/${itemId}/corroborate/`, { method: 'POST' })
       await reports.reload()
+      await loadTotals()
       setCheckNote(
         report.score === null
           ? `${report.verdict_label}: ${report.rationale}`
@@ -419,20 +553,25 @@ export default function Content() {
     <div className="scan-in">
       <div className="grid" style={{ marginBottom: 16 }}>
         <Panel title="Ingested" tag="MODULE 02">
-          <div className="metric">{items.rows.length}</div>
+          <div className="metric">{totals ? totals.items : '—'}</div>
           <div className="metric-label">Items past the credibility gate</div>
         </Panel>
         <Panel title="Analyzed" tag="NLP">
-          <div className="metric">
-            {items.rows.filter((i) => i.status === 'analyzed').length}
-          </div>
+          <div className="metric">{totals ? totals.analyzed : '—'}</div>
           <div className="metric-label">Entities and topics extracted</div>
         </Panel>
-        <Panel title="Entities" tag="EXTRACTED">
-          <div className="metric">
-            {items.rows.reduce((sum, i) => sum + (i.entities?.length || 0), 0)}
+        {/* The figure that changes what an analyst does next. An article
+            nobody has cross-referenced is not a cleared article, and a panel
+            showing only how many checks came back well files it as one. */}
+        <Panel title="Never checked" tag="CORROBORATION">
+          <div className="metric" style={{ color: totals?.unchecked ? 'var(--yellow)' : undefined }}>
+            {totals ? totals.unchecked : '—'}
           </div>
-          <div className="metric-label">Named entity mentions</div>
+          <div className="metric-label">
+            {totals?.unchecked
+              ? 'Ingested but never cross-referenced — unexamined, not cleared'
+              : 'Every ingested item has been cross-referenced'}
+          </div>
         </Panel>
         <Panel title="Latest check" tag="CORROBORATION">
           {reports.rows.length ? (
@@ -458,6 +597,7 @@ export default function Content() {
           items.reload()
           sources.reload()
           reports.reload()
+          loadTotals()
         }}
       />
 

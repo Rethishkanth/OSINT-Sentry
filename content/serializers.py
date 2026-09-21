@@ -6,6 +6,7 @@ from .models import (
     Corroboration,
     CorroborationMatch,
     Entity,
+    FactCheckMatch,
 )
 
 
@@ -18,10 +19,32 @@ class CorroborationMatchSerializer(serializers.ModelSerializer):
         )
 
 
+class FactCheckMatchSerializer(serializers.ModelSerializer):
+    """A published fact-check, with the publisher's own wording preserved.
+
+    `rating` is what the fact-checker wrote; `verdict` is our coarse bucket for
+    it. Both are sent because the bucket is lossy — the console shows the words
+    and colours by the bucket.
+    """
+
+    verdict_label = serializers.CharField(source='get_verdict_display', read_only=True)
+
+    class Meta:
+        model = FactCheckMatch
+        fields = (
+            'id', 'publisher', 'publisher_site', 'claim', 'claimant', 'rating',
+            'verdict', 'verdict_label', 'url', 'title', 'reviewed_at',
+            'language', 'matched_terms', 'match_strength', 'close_match',
+        )
+
 class CorroborationSerializer(serializers.ModelSerializer):
     """A credibility check, with the evidence behind it."""
 
     matches = CorroborationMatchSerializer(many=True, read_only=True)
+    fact_checks = FactCheckMatchSerializer(many=True, read_only=True)
+    fact_check_status_label = serializers.CharField(
+        source='get_fact_check_status_display', read_only=True
+    )
     verdict_label = serializers.CharField(source='get_verdict_display', read_only=True)
     content_title = serializers.CharField(source='content_item.title', read_only=True)
     content_url = serializers.CharField(source='content_item.url', read_only=True)
@@ -34,7 +57,9 @@ class CorroborationSerializer(serializers.ModelSerializer):
             'score', 'verdict', 'verdict_label', 'keywords', 'rationale',
             'reasons', 'searched', 'sources_checked', 'independent_sources',
             'outlets_read', 'claims', 'claims_checked', 'claims_agreed',
-            'claims_disputed', 'engine_version', 'matches', 'created_at',
+            'claims_disputed', 'fact_check_status', 'fact_check_status_label',
+            'fact_check_detail', 'fact_checks_found', 'fact_checks_negative',
+            'fact_checks', 'engine_version', 'matches', 'created_at',
         )
 
 

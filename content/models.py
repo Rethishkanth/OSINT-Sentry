@@ -150,6 +150,35 @@ class Corroboration(TimeStampedModel):
         help_text='Details another outlet stated differently. Not a ruling on '
                   'which one is right.',
     )
+
+    # --- Published fact-checks (see content.factcheck) ---
+    # Stored beside the rating, never inside it. The lookup matches on the
+    # article's search terms, so a hit is a citation to read rather than a
+    # measurement to add up, and `score` above is unaffected by anything here.
+    class FactCheckStatus(models.TextChoices):
+        DISABLED = 'disabled', 'Lookup switched off'
+        NO_KEY = 'no_key', 'No API key configured'
+        UNAVAILABLE = 'unavailable', 'Lookup did not complete'
+        NONE_FOUND = 'none_found', 'Nothing matched'
+        FOUND = 'found', 'Fact-checks matched'
+
+    # Four of these five render as an empty list, and they mean four different
+    # things. Keeping them apart is the whole reason this field exists.
+    fact_check_status = models.CharField(
+        max_length=16,
+        choices=FactCheckStatus.choices,
+        default=FactCheckStatus.DISABLED,
+        db_index=True,
+    )
+    fact_check_detail = models.TextField(blank=True)
+    fact_checks_found = models.PositiveIntegerField(default=0)
+    fact_checks_negative = models.PositiveIntegerField(
+        default=0,
+        help_text='Close matches a fact-checker rated false or partly false. '
+                  'Loose matches are excluded: a warning colour on a keyword '
+                  'coincidence is worse than no panel at all.',
+    )
+
     engine_version = models.CharField(max_length=64, blank=True)
 
     class Meta:
@@ -186,6 +215,53 @@ class CorroborationMatch(models.Model):
 
     def __str__(self):
         return f'{self.domain} ({self.similarity:.0%})'
+
+
+class FactCheckMatch(models.Model):
+    """One published fact-check whose subject overlaps this article's.
+
+    Kept verbatim. `rating` is the publisher's own wording — "Pants on Fire",
+    "Four Pinocchios", "Altered photo" — and `verdict` is our coarse bucket for
+    it, used only to decide which rows the console emphasises. The bucket is
+    lossy and the words are not, so both are stored and both are displayed.
+    """
+
+    class Verdict(models.TextChoices):
+        FALSE = 'false', 'Rated false'
+        MIXED = 'mixed', 'Rated partly false'
+        TRUE = 'true', 'Rated true'
+        UNRATED = 'unrated', 'Rating not machine-readable'
+
+    report = models.ForeignKey(
+        Corroboration, on_delete=models.CASCADE, related_name='fact_checks'
+    )
+    publisher = models.CharField(max_length=255, blank=True)
+    publisher_site = models.CharField(max_length=255, blank=True)
+    # The claim the fact-checker reviewed — which is not necessarily the claim
+    # this article makes. That gap is what close_match below is about.
+    claim = models.TextField(blank=True)
+    claimant = models.CharField(max_length=255, blank=True)
+    rating = models.CharField(max_length=255, blank=True)
+    verdict = models.CharField(
+        max_length=16, choices=Verdict.choices, default=Verdict.UNRATED
+    )
+    url = models.URLField(max_length=1000, blank=True)
+    title = models.CharField(max_length=500, blank=True)
+    reviewed_at = models.DateField(null=True, blank=True)
+    language = models.CharField(max_length=8, blank=True)
+    matched_terms = models.JSONField(default=list, blank=True)
+    match_strength = models.FloatField(default=0.0)
+    close_match = models.BooleanField(
+        default=False,
+        help_text='The reviewed claim carries most of this article\'s search '
+                  'terms. A loose match is a lead to follow, not a ruling.',
+    )
+
+    class Meta:
+        ordering = ['-close_match', '-match_strength', 'publisher']
+
+    def __str__(self):
+        return f'{self.publisher or "unknown"}: {self.rating or "no rating"}'
 
 
 class ContentTopic(models.Model):
