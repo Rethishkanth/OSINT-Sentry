@@ -66,6 +66,14 @@ class SourceFeatures:
     # rises simply because the row has been sitting in our database, which is
     # circular. It is here so the hash covers it, not so it counts.
     known_to_us_days: int | None = None
+    # The registry's own status codes, expiry and last-changed dates. The
+    # heuristic below reads none of them; they are here because the trained
+    # scorer is fitted on them, and SourceFeatures is the one place a scorer
+    # is allowed to read from. Tuple rather than list so the dataclass stays
+    # hashable and provenance_hash keeps covering every input.
+    registry_epp_statuses: tuple[str, ...] = ()
+    registry_expires_in_days: int | None = None
+    registry_last_changed_days: int | None = None
 
     def provenance_hash(self) -> str:
         """Stable hash of the exact inputs behind a score."""
@@ -89,6 +97,17 @@ def extract_features(source) -> SourceFeatures:
     if source.first_seen:
         known_to_us_days = (now - source.first_seen) // timedelta(days=1)
 
+    # Signed on purpose: a domain whose registration lapsed last week is a
+    # different thing from one with a year left, and clamping the expired
+    # case to zero would make them look the same.
+    expires_in_days = None
+    if source.domain_expires_at:
+        expires_in_days = (source.domain_expires_at - now) // timedelta(days=1)
+
+    last_changed_days = None
+    if source.registry_last_changed_at:
+        last_changed_days = (now - source.registry_last_changed_at) // timedelta(days=1)
+
     name = registrable_domain(source.domain)
     tld = name.rsplit('.', 1)[-1] if '.' in name else ''
 
@@ -103,6 +122,9 @@ def extract_features(source) -> SourceFeatures:
         is_active=source.is_active,
         content_item_count=source.content_items.count(),
         known_to_us_days=known_to_us_days,
+        registry_epp_statuses=tuple(source.registry_epp_statuses or ()),
+        registry_expires_in_days=expires_in_days,
+        registry_last_changed_days=last_changed_days,
     )
 
 

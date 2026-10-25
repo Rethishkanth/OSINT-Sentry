@@ -56,6 +56,13 @@ class RegistrationInfo:
     registrar: str = ''
     status: str = RegistryStatus.ERROR
     detail: str = ''
+    # The rest of what the record carries. The heuristic scorer reads none of
+    # these; the trained one is fitted on all three, and a model served
+    # columns its training set had but its caller does not supply is being
+    # asked a different question from the one it was measured on.
+    epp_statuses: tuple[str, ...] = ()
+    expires_at: datetime | None = None
+    last_changed_at: datetime | None = None
 
 
 def _parse_rdap_date(value: str) -> datetime | None:
@@ -183,17 +190,35 @@ class RdapClient(BaseRegistryClient):
 
         registrar = _registrar_name(payload)
 
+        # Status codes and event dates are read whatever the outcome, because
+        # a record that withholds its registration date still tells us the
+        # domain is locked, on hold, or about to expire.
+        statuses = tuple(
+            str(code).strip().lower()
+            for code in (payload.get('status') or []) if str(code).strip()
+        )
+        events: dict[str, datetime] = {}
         for event in payload.get('events') or []:
-            if event.get('eventAction') != 'registration':
-                continue
-            registered = _parse_rdap_date(event.get('eventDate', ''))
-            if registered:
-                return RegistrationInfo(
-                    registered_at=registered,
-                    registrar=registrar,
-                    status=RegistryStatus.OK,
-                    detail=f'{name}: registered {registered.date().isoformat()}',
-                )
+            action = str(event.get('eventAction') or '').strip().lower()
+            parsed = _parse_rdap_date(event.get('eventDate', ''))
+            # First occurrence wins: some registries repeat an action.
+            if action and parsed and action not in events:
+                events[action] = parsed
+        rest = {
+            'epp_statuses': statuses,
+            'expires_at': events.get('expiration'),
+            'last_changed_at': events.get('last changed'),
+        }
+
+        registered = events.get('registration')
+        if registered:
+            return RegistrationInfo(
+                registered_at=registered,
+                registrar=registrar,
+                status=RegistryStatus.OK,
+                detail=f'{name}: registered {registered.date().isoformat()}',
+                **rest,
+            )
 
         # The record exists but withholds the date - common for ccTLDs and
         # GDPR-redacted registries. Distinct from "we could not reach anyone".
@@ -201,6 +226,7 @@ class RdapClient(BaseRegistryClient):
             registrar=registrar,
             status=RegistryStatus.REDACTED,
             detail=f'{name}: RDAP record has no registration date',
+            **rest,
         )
 
 

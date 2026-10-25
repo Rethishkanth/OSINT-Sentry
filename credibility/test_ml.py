@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.core.exceptions import ImproperlyConfigured
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
 from . import features as feat
 from .models import TrustTier
@@ -67,6 +69,59 @@ class FeatureRowTests(SimpleTestCase):
         })
         self.assertEqual(sorted(from_source), sorted(from_rdap))
         self.assertEqual(sorted(from_source), sorted(feat.FEATURE_COLUMNS))
+
+    def test_both_paths_produce_the_same_values(self):
+        """Matching keys are not enough.
+
+        An earlier version passed this file's key check while serving five of
+        the eight registration columns wrong: `registry_status` ('ok') was
+        being fed where the registry's EPP codes belonged, which pinned
+        `n_status` to 1 and both lock flags to 0, and the two date columns
+        were never passed at all. Every row still had the right shape. The
+        model simply saw blanks where its training data had signal.
+        """
+        now = timezone.now()
+        registered = now - timedelta(days=3000)
+        changed = now - timedelta(days=20)
+        expires = now + timedelta(days=400)
+        statuses = ['client transfer prohibited', 'client delete prohibited']
+
+        from_rdap = feat.feature_row_from_rdap('example.com', {
+            'error': None,
+            'events': [
+                {'action': 'registration', 'date': registered.isoformat()},
+                {'action': 'last changed', 'date': changed.isoformat()},
+                {'action': 'expiration', 'date': expires.isoformat()},
+            ],
+            'status': statuses,
+            'registrar': 'Example Registrar',
+        })
+        from_source = feat.feature_row_from_source(source_features(
+            domain_age_days=3000,
+            registry_epp_statuses=tuple(statuses),
+            registry_last_changed_days=20,
+            registry_expires_in_days=400,
+        ))
+
+        differing = {
+            column for column in feat.FEATURE_COLUMNS
+            if from_rdap[column] != from_source[column]
+        }
+        self.assertEqual(differing, set())
+        # Named explicitly: these are the ones that were wrong, and a future
+        # refactor that drops them again should fail here by name.
+        self.assertEqual(from_source['n_status'], 2)
+        self.assertEqual(from_source['has_transfer_lock'], 1)
+        self.assertEqual(from_source['last_changed_days'], 20)
+        self.assertEqual(from_source['expires_in_days'], 400)
+
+    def test_the_serving_row_is_not_built_from_the_lookup_outcome(self):
+        """`registry_status` is our record of how the lookup went, not the
+        registry's status codes. Feeding it to the model is the bug above."""
+        row = feat.feature_row_from_source(source_features(
+            registry_status='ok', registry_epp_statuses=(),
+        ))
+        self.assertEqual(row['n_status'], 0)
 
     def test_unknown_age_stays_unknown_rather_than_zero(self):
         row = feat.feature_row_from_source(source_features(domain_age_days=None))
@@ -288,3 +343,124 @@ class TrainedScorerTests(SimpleTestCase):
                 ml.GradientBoostedScorer()
 
         self.assertIn('train_credibility_model', str(caught.exception))
+
+
+class RegistryPlumbingTests(TestCase):
+    """The registry fields have to survive the trip from RDAP to the model.
+
+    The parity tests above compare two functions. These check the path those
+    functions sit on: a lookup writes the codes and dates onto the Source,
+    and extract_features reads them back as the columns the model expects.
+    """
+
+    def _source(self, **kwargs):
+        from core.models import Source
+
+        return Source.objects.create(domain='plumbing-check.com', **kwargs)
+
+    def test_extract_features_carries_the_registry_record(self):
+        from .scoring import extract_features
+
+        now = timezone.now()
+        source = self._source(
+            domain_registered_at=now - timedelta(days=1000),
+            registrar='Example Registrar',
+            registry_status='ok',
+            registry_epp_statuses=['client transfer prohibited'],
+            domain_expires_at=now + timedelta(days=200),
+            registry_last_changed_at=now - timedelta(days=30),
+        )
+
+        extracted = extract_features(source)
+
+        self.assertEqual(extracted.registry_epp_statuses,
+                         ('client transfer prohibited',))
+        # delta=1: extract_features reads the clock a moment after this test
+        # did, and whole days are floored, so an exact match is a race.
+        self.assertAlmostEqual(extracted.registry_expires_in_days, 200, delta=1)
+        self.assertAlmostEqual(extracted.registry_last_changed_days, 30, delta=1)
+
+    def test_an_unlooked_up_source_leaves_them_unknown_rather_than_zero(self):
+        """Zero would read as "expires today" and "changed today"."""
+        from .scoring import extract_features
+
+        extracted = extract_features(self._source())
+
+        self.assertEqual(extracted.registry_epp_statuses, ())
+        self.assertIsNone(extracted.registry_expires_in_days)
+        self.assertIsNone(extracted.registry_last_changed_days)
+
+    def test_an_expired_domain_reports_negative_days_rather_than_zero(self):
+        from .scoring import extract_features
+
+        source = self._source(
+            domain_expires_at=timezone.now() - timedelta(days=10),
+        )
+
+        self.assertLess(extract_features(source).registry_expires_in_days, 0)
+
+    def test_the_refresh_task_writes_what_the_lookup_returned(self):
+        from .registry import RegistrationInfo, RegistryStatus
+        from .tasks import refresh_domain_registration
+
+        now = timezone.now()
+        info = RegistrationInfo(
+            registered_at=now - timedelta(days=500),
+            registrar='Example Registrar',
+            status=RegistryStatus.OK,
+            epp_statuses=('client transfer prohibited', 'server hold'),
+            expires_at=now + timedelta(days=100),
+            last_changed_at=now - timedelta(days=5),
+        )
+        source = self._source()
+
+        with patch('credibility.tasks.get_registry_client') as client:
+            client.return_value.lookup.return_value = info
+            refresh_domain_registration(source.pk)
+
+        source.refresh_from_db()
+        self.assertEqual(source.registry_epp_statuses,
+                         ['client transfer prohibited', 'server hold'])
+        self.assertIsNotNone(source.domain_expires_at)
+        self.assertIsNotNone(source.registry_last_changed_at)
+
+    def test_a_dropped_lock_is_recorded_rather_than_kept(self):
+        """A lookup reporting no lock has told us the lock is gone. Carrying
+        the old value forward would turn a stale read into a false one."""
+        from .registry import RegistrationInfo, RegistryStatus
+        from .tasks import refresh_domain_registration
+
+        source = self._source(
+            registry_epp_statuses=['client transfer prohibited'],
+            domain_expires_at=timezone.now() + timedelta(days=300),
+        )
+
+        with patch('credibility.tasks.get_registry_client') as client:
+            client.return_value.lookup.return_value = RegistrationInfo(
+                registered_at=timezone.now() - timedelta(days=500),
+                status=RegistryStatus.OK,
+            )
+            refresh_domain_registration(source.pk, force=True)
+
+        source.refresh_from_db()
+        self.assertEqual(source.registry_epp_statuses, [])
+        self.assertIsNone(source.domain_expires_at)
+
+    def test_a_failed_lookup_leaves_the_cached_record_alone(self):
+        """An unreachable registry is not evidence the lock was lifted."""
+        from .registry import RegistrationInfo, RegistryStatus
+        from .tasks import refresh_domain_registration
+
+        source = self._source(
+            registry_epp_statuses=['client transfer prohibited'],
+        )
+
+        with patch('credibility.tasks.get_registry_client') as client:
+            client.return_value.lookup.return_value = RegistrationInfo(
+                status=RegistryStatus.ERROR, detail='timeout',
+            )
+            refresh_domain_registration(source.pk, force=True)
+
+        source.refresh_from_db()
+        self.assertEqual(source.registry_epp_statuses,
+                         ['client transfer prohibited'])

@@ -48,6 +48,22 @@ class Source(TimeStampedModel):
         help_text='Outcome of the last registry lookup (ok, not_found, error…).',
     )
     registry_checked_at = models.DateTimeField(null=True, blank=True)
+    # The remainder of the registry record. Cached for the same reason the
+    # fields above are - so scoring never makes a network call - and kept
+    # because the trained scorer is fitted on all three. Without them the
+    # model is served a row of blanks where its training data had signal.
+    registry_epp_statuses = models.JSONField(
+        default=list, blank=True,
+        help_text="Registry status codes, e.g. 'client transfer prohibited'.",
+    )
+    domain_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Domain's registration expiry, per the registry.",
+    )
+    registry_last_changed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the registry record itself last changed.',
+    )
 
     # Cached feed discovery, written by content.fetchers.WebFetcher. Kept so a
     # crawl does not re-derive the feed URL every hour, and so an operator can

@@ -55,9 +55,17 @@ def refresh_domain_registration(source_id, force=False):
     source.registrar = info.registrar or source.registrar
     source.registry_status = info.status
     source.registry_checked_at = timezone.now()
+    # Unlike the two fields above, these are not written with `or <existing>`.
+    # A lookup that now reports no transfer lock has told us the lock is gone,
+    # and keeping the old value would turn a stale read into a false one.
+    if info.status in (RegistryStatus.OK, RegistryStatus.REDACTED):
+        source.registry_epp_statuses = list(info.epp_statuses)
+        source.domain_expires_at = info.expires_at
+        source.registry_last_changed_at = info.last_changed_at
     source.save(update_fields=[
         'domain_registered_at', 'registrar', 'registry_status',
-        'registry_checked_at', 'updated_at',
+        'registry_checked_at', 'registry_epp_statuses', 'domain_expires_at',
+        'registry_last_changed_at', 'updated_at',
     ])
     logger.info('Registry lookup for %s: %s', source.domain, info.detail or info.status)
     return info.status

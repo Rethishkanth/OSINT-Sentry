@@ -200,12 +200,20 @@ def feature_row_from_rdap(domain: str, record: dict | None, *, now=None) -> dict
 
 
 def feature_row_from_source(source_features) -> dict:
-    """Serving path: the SourceFeatures the heuristic scorer already builds."""
+    """Serving path: the SourceFeatures the heuristic scorer already builds.
+
+    `status` is the registry's own EPP codes, not `registry_status`. The
+    latter is this system's record of how the lookup went - 'ok', 'not_found'
+    - and feeding it here would make `n_status` a constant 1 and the two lock
+    flags constant 0, which is not what the model was trained on.
+    """
     return feature_row(
         source_features.domain,
         age_days=source_features.domain_age_days,
-        status=source_features.registry_status,
+        status=list(source_features.registry_epp_statuses),
         registrar=source_features.registrar,
+        last_changed_days=source_features.registry_last_changed_days,
+        expires_in_days=source_features.registry_expires_in_days,
     )
 
 

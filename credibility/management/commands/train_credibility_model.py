@@ -205,7 +205,7 @@ class Command(BaseCommand):
                 'coverage_table': coverage_table,
                 'feature_set_comparison': comparison,
             },
-        }, out_path)
+        }, out_path, compress=3)
 
         report = out_path.with_suffix('.metrics.json')
         report.write_text(json.dumps({
