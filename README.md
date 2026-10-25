@@ -1,6 +1,9 @@
 # OSINT-Sentry
 
-Django REST API backend + Vite/React frontend for the OSINT-Sentry analysis platform.
+An integrated, credibility-first framework for automated OSINT collection,
+multimodal misinformation detection, and GIS-based actionable intelligence.
+
+Django REST API backend + Vite/React frontend.
 
 All five analysis modules are built and wired to the console: source
 credibility and site safety (1), content fetching, corroboration and
