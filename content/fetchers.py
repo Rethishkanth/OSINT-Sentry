@@ -12,7 +12,7 @@ and the private-address check, and :mod:`content.robots` is consulted on every
 single hop, including redirect targets.
 
 NullFetcher is still here and is still what you switch to in order to make
-this system contact nobody — the same role NullRegistryClient plays for
+this system contact nobody - the same role NullRegistryClient plays for
 Module 1.
 """
 
@@ -136,7 +136,7 @@ class WebFetcher(BaseFetcher):
 
         Discovery costs a homepage request plus a probe of every conventional
         feed path. Repeating that hourly against a site that simply has no
-        feed — and plenty of large publishers no longer do — is exactly the
+        feed - and plenty of large publishers no longer do - is exactly the
         behaviour the rest of this module exists to avoid.
         """
         if source.feed_status not in (FeedStatus.NO_FEED, FeedStatus.BLOCKED):
@@ -163,7 +163,7 @@ class WebFetcher(BaseFetcher):
                 return candidate
 
         # Nothing advertised. Publishers very often still have a feed at one
-        # of the conventional paths, so try those before giving up — but only
+        # of the conventional paths, so try those before giving up - but only
         # a handful, and each one is rate-limited like any other request.
         base = response.url.rstrip('/')
         origin = '/'.join(base.split('/')[:3])
@@ -202,11 +202,11 @@ class WebFetcher(BaseFetcher):
             entries = parse_feed(response.body, base_url=response.url)
         except Blocked as exc:
             _mark_feed(source, FeedStatus.BLOCKED, feed_url)
-            logger.info('%s: feed blocked — %s', source.domain, exc)
+            logger.info('%s: feed blocked - %s', source.domain, exc)
             return []
         except (FetchError, FeedError) as exc:
             _mark_feed(source, FeedStatus.ERROR, feed_url)
-            logger.info('%s: feed unreadable — %s', source.domain, exc)
+            logger.info('%s: feed unreadable - %s', source.domain, exc)
             return []
 
         _mark_feed(source, FeedStatus.OK, feed_url)

@@ -23,7 +23,7 @@ Three things this deliberately gets right
 
 What v2 changed, and why
 ------------------------
-v1 rated almost everything 3.1/10 — which was the source-credibility half of
+v1 rated almost everything 3.1/10 - which was the source-credibility half of
 the formula with corroboration contributing exactly zero, on every article.
 The cause was not the arithmetic. It was the query.
 
@@ -31,7 +31,7 @@ The cause was not the arithmetic. It was the query.
 appeared anywhere on the fetched page, so navigation menus and sidebar chrome
 outvoted the story. An article headlined "RBI intervention, dollar flows push
 Indian rupee to two-month peak" was searched for as *Indian, Budget, share,
-price* — not one word of which is in the headline — and the 139 unrelated
+price* - not one word of which is in the headline - and the 139 unrelated
 articles that came back were correctly rejected, one at a time, down to zero.
 
 So v2:
@@ -49,7 +49,7 @@ So v2:
 * **checks the article's specifics against that text.** See `claims`: the
   figures, sums, and dates the article asserts are looked for in what the
   other outlets printed, so the report can say *four outlets print the same
-  number* — or *this one prints a different one*, which is the single most
+  number* - or *this one prints a different one*, which is the single most
   useful thing this module can tell an analyst.
 * **shows its working.** Every component of the score is emitted as a
   structured reason with its own contribution, so the number is auditable
@@ -123,7 +123,7 @@ class Verdict:
     PARTIALLY_CORROBORATED = 'partially_corroborated'
     UNCORROBORATED = 'uncorroborated'
     # Another outlet, read in full, printed a different figure for something
-    # this article states. Not a ruling on which is right — see `claims`.
+    # this article states. Not a ruling on which is right - see `claims`.
     DISPUTED = 'disputed'
     DO_NOT_TRUST = 'do_not_trust'
     UNAVAILABLE = 'unavailable'
@@ -158,7 +158,7 @@ class SearchOutcome:
 
     `available=False` means we could not look at all, which must never be
     scored as "nothing was found". `failed` names backends that did not
-    answer while others did — a partial search, whose *negative* result is
+    answer while others did - a partial search, whose *negative* result is
     worthless even though its positive results are perfectly good.
     """
 
@@ -194,7 +194,7 @@ def _lede_hits(word: str, index: Counter) -> int:
     """How many times the article returns to a headline word.
 
     Matched on a short prefix rather than exactly, because a headline says
-    "floods" where the copy underneath says "flooding" — and an exact match
+    "floods" where the copy underneath says "flooding" - and an exact match
     would score the story's own subject at zero for the crime of being
     inflected differently in the headline.
     """
@@ -206,7 +206,7 @@ def _lede_hits(word: str, index: Counter) -> int:
 
 
 TITLE_PHRASE_RE = re.compile(r"\b([A-Z][\w'’-]*(?:[ ]+[A-Z][\w'’-]*)*)\b")
-# An all-caps run in a headline is an acronym — RBI, NATO, WHO — and those are
+# An all-caps run in a headline is an acronym - RBI, NATO, WHO - and those are
 # the most findable terms a story has. The proper-noun pattern above already
 # catches them, but they must survive the "is it just a capitalised first
 # word" check that discards sentence-initial ordinary words.
@@ -274,8 +274,8 @@ def _headline_terms(title: str, lede: str = '') -> dict[str, Term]:
             continue
         terms.setdefault(lowered, Term(text=acronym, weight=4.0, is_entity=True))
 
-    # The remaining headline words. Not entities — matching only on these means
-    # two stories share a vocabulary — but the good ones name the subject.
+    # The remaining headline words. Not entities - matching only on these means
+    # two stories share a vocabulary - but the good ones name the subject.
     #
     # Which are the good ones is settled by whether the article goes on to use
     # them. In "Tupac trial spotlights decades of US police failures",
@@ -307,12 +307,12 @@ def terms_for(item) -> list[Term]:
     paragraphs. Ranking by frequency, as v1 did, reliably picked the furniture.
 
     Entities outrank topic words because proper nouns are what make a story
-    findable — "Mumbai" narrows a search, "flooding" does not.
+    findable - "Mumbai" narrows a search, "flooding" does not.
     """
     title_tokens = _tokens(item.title)
     # The body, not the summary. The summary is three sentences, which is far
     # too little text for "how often does the article come back to this word"
-    # to mean anything — every headline word would appear once and tie. Falls
+    # to mean anything - every headline word would appear once and tie. Falls
     # back to the summary for feed-only items, which have no body.
     lede = ((item.body or '') or (item.summary or ''))[:LEDE_CHARS].lower()
     boilerplate = _boilerplate_terms(item)
@@ -336,8 +336,8 @@ def terms_for(item) -> list[Term]:
         elif key in lede:
             # A multi-word capitalised phrase really is a name. A single
             # capitalised word from the body is as likely to be an ordinary
-            # word that happened to open a sentence — "Heavy rainfall closed…"
-            # is not a story about somebody called Heavy — so it is ranked
+            # word that happened to open a sentence - "Heavy rainfall closed…"
+            # is not a story about somebody called Heavy - so it is ranked
             # below the headline's own vocabulary rather than above it.
             weight = (2.2 if ' ' in text else 1.9) + bump
         else:
@@ -404,7 +404,7 @@ def similarity_of(candidate: Candidate, terms: list[Term]) -> tuple[float, list[
 
     Normalised against the article's *strongest few* terms rather than all of
     them. Most candidates are known only by their headline, and a headline
-    cannot contain twelve terms — dividing by all of them scored genuinely
+    cannot contain twelve terms - dividing by all of them scored genuinely
     matching coverage at 25% and threw it away. The question worth asking is
     how many of the article's key terms this candidate carries, so the
     denominator is those, and the result is capped at 1.
@@ -517,8 +517,8 @@ _feed_cache_lock = threading.Lock()
 class TrackedFeedSearch(BaseCorroborationSearch):
     """Reads the live feeds of the other outlets this system tracks.
 
-    Wider than the stored items — it sees what those outlets published in the
-    last few hours, whether or not we have ingested it — and it goes through
+    Wider than the stored items - it sees what those outlets published in the
+    last few hours, whether or not we have ingested it - and it goes through
     the same robots-respecting, rate-limited fetcher as everything else in
     Module 2.
 
@@ -602,7 +602,7 @@ class ReferenceFeedSearch(TrackedFeedSearch):
 
     This is the backend that answers "who else is reporting this?" on a fresh
     install. `TrackedFeedSearch` above can only see outlets somebody already
-    added as a Source, which on a new deployment is one or two — so every
+    added as a Source, which on a new deployment is one or two - so every
     story came back uncorroborated, truthfully but uselessly, because nothing
     had actually been consulted.
 
@@ -661,7 +661,7 @@ class ReferenceFeedSearch(TrackedFeedSearch):
 class GdeltSearch(BaseCorroborationSearch):
     """GDELT's DOC 2.0 API: a free, key-less index of global news coverage.
 
-    Chosen for the same reason Module 1 uses RDAP — it answers the question
+    Chosen for the same reason Module 1 uses RDAP - it answers the question
     directly, needs no account, and adds no dependency. It rate-limits hard,
     so a 429 is reported as *unavailable*, never as an empty result.
     """
@@ -741,7 +741,7 @@ class GdeltSearch(BaseCorroborationSearch):
             # Unavailable, emphatically not empty.
             return SearchOutcome(
                 [], available=False, failed=[self.name],
-                detail=f'{detail}. No conclusion drawn — this is a failed lookup, '
+                detail=f'{detail}. No conclusion drawn - this is a failed lookup, '
                        'not an absence of coverage.',
                 searched='GDELT',
             )
@@ -898,7 +898,7 @@ def read_candidates(candidates: list[Candidate], limit: int) -> tuple[list[tuple
     nine words each is guesswork, and no figure an article states can possibly
     be checked against a headline that does not contain it.
 
-    Every request goes through the same fetcher as the rest of Module 2 —
+    Every request goes through the same fetcher as the rest of Module 2 -
     robots.txt honoured, per-host rate limit honoured, size and redirect caps
     honoured, private hosts refused. Outlets that are not tracked Sources are
     read on exactly the same terms as ones that are; being unregistered is
@@ -977,8 +977,8 @@ def _verdict_for(score: float, source_credibility: float, independent: int,
     Being first to report something is not dishonesty, so an outlet Module 1
     rates well is never tagged DO NOT TRUST merely for standing alone. A
     source Module 1 has already condemned does not get rehabilitated by a
-    handful of keyword matches. And a concrete conflict — another outlet, read
-    in full, printing a different figure — is a specific, checkable finding
+    handful of keyword matches. And a concrete conflict - another outlet, read
+    in full, printing a different figure - is a specific, checkable finding
     that deserves its own tag rather than being averaged into a number.
     """
     if source_credibility < 30:
@@ -1034,8 +1034,8 @@ def _shortlist(item, candidates, terms, own_domain, window) -> list[Candidate]:
 def _independent(candidates: list[Candidate]) -> list[Candidate]:
     """One entry per distinct voice, best first.
 
-    Collapses syndication — forty mastheads running one wire story is one
-    confirmation, not forty — and then collapses each outlet's own follow-ups,
+    Collapses syndication - forty mastheads running one wire story is one
+    confirmation, not forty - and then collapses each outlet's own follow-ups,
     which are also one voice.
     """
     groups: dict[str, Candidate] = {}
@@ -1053,7 +1053,7 @@ def fact_check_lookup(keywords: list[str], language: str = ''):
     """Ask the configured fact-check client, and never let it break a check.
 
     The rest of the report does not depend on this layer, so a client that
-    raises — a bad dotted path in settings, a library that changed under us —
+    raises - a bad dotted path in settings, a library that changed under us -
     degrades to `unavailable` rather than taking the whole rating down with
     it. The exception is logged, not swallowed silently.
     """
@@ -1188,7 +1188,7 @@ def assess(item) -> CorroborationResult:
     independent = [c for c in ranked if c.similarity >= floor and c.entity_hit]
 
     # The asymmetry that keeps this honest. Finding corroboration is valid
-    # even when part of the search failed — evidence found is evidence found.
+    # even when part of the search failed - evidence found is evidence found.
     # Finding *none* is only meaningful if we actually looked everywhere, so
     # a partial search that came back empty draws no conclusion at all.
     if not independent and outcome.failed:
@@ -1216,7 +1216,7 @@ def assess(item) -> CorroborationResult:
     source_component = source_credibility / 10.0
 
     # When nothing in the article is checkable, its share goes to corroboration
-    # rather than being lost — otherwise an article with no figures in it could
+    # rather than being lost - otherwise an article with no figures in it could
     # not score above 7.5 however many outlets confirmed it.
     if claim_stats['checked']:
         w_source, w_corroboration, w_claims = 0.30, 0.45, 0.25
@@ -1281,7 +1281,7 @@ def assess(item) -> CorroborationResult:
             )
             reasons.append(Reason(
                 'Conflicting figures',
-                f'{conflicts}. Which is right is not decided here — a later '
+                f'{conflicts}. Which is right is not decided here - a later '
                 'correction looks exactly like an error from the outside.',
                 -round(penalty, 2),
             ))
@@ -1323,9 +1323,9 @@ def assess(item) -> CorroborationResult:
 
     rationale = (
         f'{ENGINE_VERSION}: ' + ' '.join(
-            f'{r.label} — {r.detail}' for r in reasons
+            f'{r.label} - {r.detail}' for r in reasons
         ) + ' Measures how well other outlets back this story up, and whether '
-        'its stated details match theirs — not whether it is true.'
+        'its stated details match theirs - not whether it is true.'
     )
 
     return CorroborationResult(

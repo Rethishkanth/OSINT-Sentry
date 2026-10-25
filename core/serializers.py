@@ -39,7 +39,7 @@ class SourceSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         # Registry fields are written by the RDAP lookup task, never by a
-        # client — letting an API caller set the domain age would hand them
+        # client - letting an API caller set the domain age would hand them
         # control of their own credibility score.
         read_only_fields = (
             'created_at',

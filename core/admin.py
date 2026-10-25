@@ -24,7 +24,7 @@ class SourceAdmin(admin.ModelAdmin):
     def domain_age(self, obj):
         """Real registration age, not how long this system has known the row."""
         if not obj.domain_registered_at:
-            return '—'
+            return '-'
         days = (timezone.now() - obj.domain_registered_at).days
         if days >= 365:
             return f'{days // 365}y'

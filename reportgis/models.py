@@ -16,7 +16,7 @@ class GeoEvent(TimeStampedModel):
     the ability to write `location__distance_lte=...` in a queryset. What was
     gained: the module runs everywhere the rest of the project runs, on SQLite,
     with no system packages. Radius search is done with a haversine in
-    reportgis.geocode, which at this scale costs nothing — see the note there.
+    reportgis.geocode, which at this scale costs nothing - see the note there.
 
     The way back is open and cheap: add a PointField alongside these columns in
     a migration, backfill from them, and the rest of the module keeps working
@@ -130,7 +130,7 @@ class ExtractionRun(TimeStampedModel):
 class Report(TimeStampedModel):
     """A generated analyst report bundling a set of geolocated events.
 
-    The generated parts — document, findings, gaps — are written by
+    The generated parts - document, findings, gaps - are written by
     reportgis.reporting and are not edited here. `scope` is kept so the same
     report can be rebuilt later against newer events and the two compared;
     without it a report is a dead end, true of a moment nobody recorded.
@@ -172,7 +172,7 @@ class Report(TimeStampedModel):
     scope = models.JSONField(default=dict, blank=True)
     builder_version = models.CharField(max_length=64, blank=True)
     # Left for an analyst's own export, attached by hand. Nothing in this
-    # module writes it — see reportgis.reporting.
+    # module writes it - see reportgis.reporting.
     pdf = models.FileField(upload_to='reports/%Y/%m/', blank=True)
     generated_at = models.DateTimeField(null=True, blank=True)
 

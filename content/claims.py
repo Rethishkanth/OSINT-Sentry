@@ -8,8 +8,8 @@ the same subject even if the two disagree about every detail.
 
 This module asks the narrower, harder question the analyst actually wants:
 **does what this article states match what other outlets state?** It does that
-by finding the article's checkable specifics — figures, sums of money,
-percentages, dates, death tolls — and looking for those same specifics in the
+by finding the article's checkable specifics - figures, sums of money,
+percentages, dates, death tolls - and looking for those same specifics in the
 text of other outlets' coverage of the same story.
 
 What it can and cannot establish
@@ -30,8 +30,8 @@ getting a fact wrong. So a dispute is only reported when the other outlet is
 demonstrably talking about the same quantity: two or more of the claim's
 context words present, the competing figure within a short span of them, the
 same kind of quantity (money is never compared against percentages), the same
-magnitude (a bare count is not a rival reading of "40 crore"), and — for bare
-figures — the same counted noun, so that 47 *people* is only ever contradicted
+magnitude (a bare count is not a rival reading of "40 crore"), and - for bare
+figures - the same counted noun, so that 47 *people* is only ever contradicted
 by another count of people. Any doubt resolves to `unverified`.
 
 Each of those guards is here because its absence produced a wrong answer on a
@@ -106,7 +106,7 @@ ISO_DATE_RE = re.compile(r'\b(\d{4})-(\d{2})-(\d{2})\b')
 
 # A line break ends a sentence as surely as a full stop does. Headlines,
 # standfirsts and captions rarely carry terminal punctuation, so splitting on
-# punctuation alone glues them to the paragraph beneath — and then the word
+# punctuation alone glues them to the paragraph beneath - and then the word
 # "after" a figure is the first word of the *next* line. That is how a story
 # about 47 people came to record itself as counting 47 officials.
 SENTENCE_RE = re.compile(r'(?<=[.!?])\s+|\n+')
@@ -208,8 +208,8 @@ def _is_year(value: str) -> bool:
     """Whether a bare figure is almost certainly a year.
 
     Years are dates wearing a number's clothes. Compared as quantities they
-    match anything — a 2022 in one outlet's copy sits within a sentence of
-    almost any figure in another's — which is how a live check came to report
+    match anything - a 2022 in one outlet's copy sits within a sentence of
+    almost any figure in another's - which is how a live check came to report
     "this article says 03, the Guardian says 2022" as a factual conflict.
     """
     return value.isdigit() and len(value) == 4 and 1800 <= int(value) <= 2199
@@ -217,7 +217,7 @@ def _is_year(value: str) -> bool:
 
 def _scale(magnitude: str) -> str:
     """Canonical magnitude word. Indian and Western scales are both kept as
-    written — a crore is not a million and converting between them would
+    written - a crore is not a million and converting between them would
     invent precision the article did not have."""
     word = (magnitude or '').lower().strip().rstrip('s')
     return {
@@ -329,7 +329,7 @@ _FOLLOWING_WORD_RE = re.compile(r'[ \t]*([A-Za-z][A-Za-z-]{2,})')
 
 
 def _counted_noun(text: str, end: int) -> str:
-    """The word a figure quantifies — the "people" in "47 people".
+    """The word a figure quantifies - the "people" in "47 people".
 
     This is what makes two figures comparable. Without it, any two-digit
     number in one article can be read as a rival reading of any two-digit
@@ -353,7 +353,7 @@ def _quantifies(sentence: str, end: int, number: str, magnitude: str) -> bool:
     "47 people died" states a fact. "the first half of my 20s" does not, and
     neither does a stray 12 left behind by a page's furniture. What separates
     them is whether the figure is followed by a word naming what there are 47
-    of — which is how quantities are written in prose, and which costs one
+    of - which is how quantities are written in prose, and which costs one
     regex to check.
 
     Only bare one- and two-digit figures have to pass this. Anything with a
@@ -376,7 +376,7 @@ def _checkable_quantity(number: str, magnitude: str) -> bool:
     almost any figure it is compared against.
 
     Two-digit figures are *not* excluded, though an earlier draft did exclude
-    them. That draft threw away "47 people died" — a death toll is the single
+    them. That draft threw away "47 people died" - a death toll is the single
     most valuable thing this module can check, and other outlets printing 42
     is precisely the finding worth surfacing. What separates that from a stray
     "12" in a page's furniture is not the number of digits, it is whether
@@ -410,8 +410,8 @@ def extract_claims(item, limit: int = MAX_CLAIMS) -> list[Claim]:
         byline = any(marker in lowered for marker in _BYLINE_MARKERS)
         for kind, value, display, position, counts in _claims_in(sentence):
             # A sum and a bare count of the same amount are one claim written
-            # twice — the headline's "1,200 crore" and the body's "1,200 crore
-            # rupees" — and counting both would double its weight in the score.
+            # twice - the headline's "1,200 crore" and the body's "1,200 crore
+            # rupees" - and counting both would double its weight in the score.
             key = ('amount', value) if kind in (MONEY, QUANTITY) else (kind, value)
             if key in claims:
                 continue
@@ -500,7 +500,7 @@ def verify_claims(claims: list[Claim], evidence: list[tuple[str, str]]) -> list[
 
     `evidence` is (domain, text) for each other article actually read. A claim
     only reaches `agreed` or `disputed` on the strength of a page we fetched
-    and parsed — a headline is far too short to carry a figure reliably, and
+    and parsed - a headline is far too short to carry a figure reliably, and
     scoring an article down because a 9-word headline omitted its numbers
     would be measuring the headline, not the story.
     """
@@ -540,7 +540,7 @@ def verify_claims(claims: list[Claim], evidence: list[tuple[str, str]]) -> list[
                     if any(abs(position - a) <= DISPUTE_WINDOW for a in anchors)
                     # A bare figure only contradicts another when both count
                     # the same thing. Without this, "12 <anything>" here and
-                    # "24 <anything else>" there read as a factual conflict —
+                    # "24 <anything else>" there read as a factual conflict -
                     # which a live check duly reported, wrongly.
                     and (claim.kind != QUANTITY or counts == claim.counts)
                 ),

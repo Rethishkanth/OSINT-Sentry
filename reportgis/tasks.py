@@ -21,7 +21,7 @@ def locate_content_item(item: ContentItem) -> ExtractionRun:
     Reconcile, not append. Re-running after a gazetteer change must leave the
     item's pins as the current engine sees it, so a place that no longer
     resolves loses its pin instead of lingering as a fact nothing supports.
-    Pins an analyst placed by hand are left alone — those are not this
+    Pins an analyst placed by hand are left alone - those are not this
     function's to withdraw.
     """
     geocoder = get_geocoder()
@@ -49,7 +49,7 @@ def locate_content_item(item: ContentItem) -> ExtractionRun:
                     'engine_version': result.engine_version,
                     # The article's publication time is the only timestamp
                     # available. It is when the event was *reported*, which is
-                    # not when it happened — an analyst correcting this by hand
+                    # not when it happened - an analyst correcting this by hand
                     # is expected, and the field stays editable for that.
                     'occurred_at': item.published_at,
                 },

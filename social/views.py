@@ -30,7 +30,7 @@ class SocialAccountViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        """GET /api/social/accounts/summary/ — headline counts over everything.
+        """GET /api/social/accounts/summary/ - headline counts over everything.
 
         Counted in the database rather than derived from the rows the console
         has on screen: those lists are paginated, so counting them there would
@@ -72,7 +72,7 @@ class SocialAccountViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def flagged(self, request):
-        """GET /api/social/accounts/flagged/ — the accounts worth a look.
+        """GET /api/social/accounts/flagged/ - the accounts worth a look.
 
         Accounts the scorer declined to judge are absent by construction: a
         null score is not >= any threshold. `summary` reports how many those
@@ -101,7 +101,7 @@ class SocialPostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def score(self, request, pk=None):
-        """POST /api/social/posts/{id}/score/ — rescore one post inline."""
+        """POST /api/social/posts/{id}/score/ - rescore one post inline."""
         post = self.get_object()
         score_post.run(post.pk)
         post.refresh_from_db()
@@ -116,11 +116,11 @@ class InteractionEdgeViewSet(viewsets.ModelViewSet):
 
 @api_view(['POST'])
 def refresh_scores(request):
-    """POST /api/social/refresh-scores/ — rescore the whole graph.
+    """POST /api/social/refresh-scores/ - rescore the whole graph.
 
     Run inline rather than queued. The default broker is filesystem:// with no
     worker attached, so a queued rescore would return 202 Accepted to a console
-    that then redraws the same numbers it already had — the button would look
+    that then redraws the same numbers it already had - the button would look
     like it worked and would have done nothing. The graph is scored in memory
     in one pass, so an analyst-triggered rescore is a request the API can
     simply answer.
@@ -145,7 +145,7 @@ class CampaignViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'])
     def detect(self, request):
-        """POST /api/social/campaigns/detect/ — run a pass over the graph.
+        """POST /api/social/campaigns/detect/ - run a pass over the graph.
 
         Inline, for the same reason the rescore is: the default broker has no
         worker, and a queued pass would hand the console a 202 and change
@@ -156,7 +156,7 @@ class CampaignViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def latest_run(self, request):
-        """GET /api/social/campaigns/latest_run/ — the last pass, or nothing.
+        """GET /api/social/campaigns/latest_run/ - the last pass, or nothing.
 
         The console needs this to tell an empty campaign list apart from a
         detector that has never been run, and to mark clusters the newest pass

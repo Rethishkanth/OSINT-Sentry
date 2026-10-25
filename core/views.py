@@ -23,7 +23,7 @@ class SourceViewSet(viewsets.ModelViewSet):
         Submitting a site that is already tracked re-scores it instead of
         returning a uniqueness error. Someone pasting a link is asking "check
         this", and "you already added that" answers a question they did not
-        ask — while leaving the score they wanted just as stale as it was.
+        ask - while leaving the score they wanted just as stale as it was.
         """
         # Imported here rather than at module scope: credibility imports core,
         # so a top-level import would close the cycle.
@@ -46,7 +46,7 @@ class SourceViewSet(viewsets.ModelViewSet):
                 {
                     **self.get_serializer(existing).data,
                     'created': False,
-                    'detail': f'{domain} is already tracked — a rescore is queued.',
+                    'detail': f'{domain} is already tracked - a rescore is queued.',
                 },
                 status=status.HTTP_200_OK,
             )
@@ -148,8 +148,8 @@ def overview(request):
             'model_version': settings.CREDIBILITY_SCORER.rsplit('.', 1)[-1],
         },
         # Ordered for the same reason the social dict below is: the panel
-        # renders three sub-metrics and drops the rest. `unchecked` — articles
-        # nobody has cross-referenced — sits beside `analyzed` because an
+        # renders three sub-metrics and drops the rest. `unchecked` - articles
+        # nobody has cross-referenced - sits beside `analyzed` because an
         # unchecked article is not a cleared one, and `entities` is a volume
         # figure that changes nothing an analyst does.
         'content': {

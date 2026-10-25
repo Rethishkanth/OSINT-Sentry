@@ -21,7 +21,7 @@ class MediaItem(TimeStampedModel):
     file = models.FileField(upload_to='media_items/%Y/%m/')
     kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.IMAGE)
     source_url = models.URLField(max_length=1000, blank=True)
-    # sha256 of the file bytes — used to dedupe and to tie results to exact content.
+    # sha256 of the file bytes - used to dedupe and to tie results to exact content.
     sha256 = models.CharField(max_length=64, blank=True, db_index=True)
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)

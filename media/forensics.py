@@ -12,8 +12,8 @@ arithmetic over the file itself:
   how large the error is but how *unevenly* it is distributed, so the signal
   reported here is the share of blocks whose error stands out from the rest.
 
-- **Quantization tables.** Cameras ship their own JPEG tables. Libraries —
-  Pillow, libjpeg, most editors — use the IJG standard table scaled to a
+- **Quantization tables.** Cameras ship their own JPEG tables. Libraries -
+  Pillow, libjpeg, most editors - use the IJG standard table scaled to a
   quality setting. A file whose EXIF names a camera but whose tables are plain
   IJG has been re-encoded by software since it left that camera.
 
@@ -35,7 +35,7 @@ its content, or that its error levels are suspiciously uneven.
 
 It is **not a deepfake detector**, and `deepfake_score` is deliberately left
 empty rather than filled with a number no model produced. It also cannot see
-an edit that was flattened and re-saved cleanly — a skilled edit re-encoded
+an edit that was flattened and re-saved cleanly - a skilled edit re-encoded
 once looks like any other photograph.
 
 "Suspicious" here means *worth a human look*, never *fake*. A file with
@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - exercised only on a bare install
 
 
 # Software tags that mean the file went through an editor. Not incriminating
-# on its own — cropping and levels are editing too — but it is a fact about
+# on its own - cropping and levels are editing too - but it is a fact about
 # the file's history and the analyst should be told.
 EDITORS = (
     ('photoshop', 'Adobe Photoshop'),
@@ -230,7 +230,7 @@ class HeuristicForensics(BaseForensics):
             return _unreadable(
                 f'No {kind} forensics engine is installed. The file has been '
                 f'hashed and recorded, but nothing about its content was '
-                f'examined — an inconclusive verdict is the honest one.'
+                f'examined - an inconclusive verdict is the honest one.'
             )
         if not PILLOW_AVAILABLE:
             return _unreadable(
@@ -457,7 +457,7 @@ def _hotspot_ratio(diff, original) -> float:
     the thing worth showing an analyst. So the number returned is the largest
     connected group of deviating blocks, not the total count.
 
-    Deviation counts in both directions — a region taken from a heavily
+    Deviation counts in both directions - a region taken from a heavily
     compressed source has already lost its high-frequency content and so
     re-encodes with *less* error than its surroundings, not more.
 
@@ -468,9 +468,9 @@ def _hotspot_ratio(diff, original) -> float:
     256 composites carrying a visibly different compression history, the
     largest-cluster ratio landed in the same range for untouched images as
     for spliced ones: at a 0.035 cut-off it flagged 15 of 64 originals and
-    78 of 256 composites. Re-running the same sweep as a JPEG ghost — the
+    78 of 256 composites. Re-running the same sweep as a JPEG ghost - the
     stronger formulation, comparing each block's error curve across a sweep
-    of re-encode qualities rather than at a single one — did no better: 16
+    of re-encode qualities rather than at a single one - did no better: 16
     of 30 originals against 41 of 90 composites.
 
     So the value is reported and never scored. It stays because the map
@@ -637,7 +637,7 @@ def _rate(findings: Findings) -> ForensicResult:
         add(
             0.1,
             'No EXIF at all. Usually the platform that served the image '
-            'stripped it, which is routine — but it also means the file can '
+            'stripped it, which is routine - but it also means the file can '
             'no longer account for where it came from.',
         )
 
@@ -656,7 +656,7 @@ def _rate(findings: Findings) -> ForensicResult:
                 f'Error level analysis: the largest region degrading out of '
                 f'step with the rest of the frame covers {ratio * 100:.1f}% '
                 f'of it. Recorded for inspection and deliberately not scored '
-                f'— on test composites this measure did not separate edited '
+                f'- on test composites this measure did not separate edited '
                 f'images from untouched ones.'
             ),
             'points': 0.0,
@@ -682,7 +682,7 @@ def _verdict_for(suspicion: float, proven: bool, findings: Findings) -> tuple[st
 
     `manipulated` is reserved for the thumbnail contradiction, the only
     finding here that is close to proof. Everything else, however much of it
-    piles up, tops out at `suspicious` — because every individual signal in
+    piles up, tops out at `suspicious` - because every individual signal in
     this module also has an innocent explanation.
     """
     if proven:
@@ -696,7 +696,7 @@ def _verdict_for(suspicion: float, proven: bool, findings: Findings) -> tuple[st
         return (
             Verdict.SUSPICIOUS,
             'Several independent signs that this file was not saved straight '
-            'out of a camera. Worth a human look — this is not a finding of '
+            'out of a camera. Worth a human look - this is not a finding of '
             'forgery.',
         )
 
@@ -717,7 +717,7 @@ def _verdict_for(suspicion: float, proven: bool, findings: Findings) -> tuple[st
             Verdict.AUTHENTIC,
             'Intact camera metadata, camera-specific compression tables, and '
             'evenly distributed error levels. Consistent with an unedited '
-            'original — which is not the same as proof of one.',
+            'original - which is not the same as proof of one.',
         )
 
     return (

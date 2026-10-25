@@ -2,8 +2,8 @@
  * A schematic world coastline, in [longitude, latitude] pairs.
  *
  * This is here so the pins have somewhere to sit. A scatter of dots on an
- * empty grid is not a map — you cannot tell Lyon from Lagos without counting
- * gridlines — and the alternative, a tiled basemap, means an outbound request
+ * empty grid is not a map - you cannot tell Lyon from Lagos without counting
+ * gridlines - and the alternative, a tiled basemap, means an outbound request
  * per tile to whoever hosts the tiles, on every pan, carrying the viewport of
  * whatever an analyst is looking at. That is a bigger decision than "the map
  * would look nicer", and this module has spent two days deliberately not
@@ -20,8 +20,8 @@
  * coordinates by a haversine (see reportgis.geocode), never from this outline
  * and never from where a pin lands on the screen.
  *
- * Bodies of water enclosed by a single ring — the Mediterranean's north
- * shore, the Black and Caspian seas, the Gulf — are filled as land here,
+ * Bodies of water enclosed by a single ring - the Mediterranean's north
+ * shore, the Black and Caspian seas, the Gulf - are filled as land here,
  * because each landmass is one ring and a ring cannot have a hole. Pins are
  * drawn on top and are unaffected.
  */
@@ -182,7 +182,7 @@ export const LAND = [
 /**
  * SVG path data in the map's own user space: x = lon + 180, y = 90 - lat.
  *
- * Built once at module load. The projection is equirectangular — every degree
+ * Built once at module load. The projection is equirectangular - every degree
  * of longitude is the same width at every latitude, which is wrong about area
  * and honest about coordinates: what you read off the axes is what is stored
  * in the database.

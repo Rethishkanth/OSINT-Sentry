@@ -15,8 +15,8 @@ What the default implementation does, in order of how much it is worth:
    "Birmingham, Alabama" say which one they mean. Also HIGH.
 
 3. **A gazetteer name that is unambiguous, or disambiguated by something else
-   in the same text.** An article that says "Tripoli" and later "Libya" — or
-   just "Libyan officials", which is how news prose actually writes it — has
+   in the same text.** An article that says "Tripoli" and later "Libya" - or
+   just "Libyan officials", which is how news prose actually writes it - has
    told you. MEDIUM: the qualifier is inferred rather than stated, and the
    table is small enough that "unambiguous here" is weaker than "unambiguous".
 
@@ -81,7 +81,7 @@ _DMS = re.compile(
 # separated by a comma look like this; "1.5, 2.0" in a table of percentages is
 # not a location. Requiring metre-ish precision on both halves is the cheapest
 # rule that tells a coordinate from a pair of figures, and it is still only a
-# heuristic — it will miss "51.5, -0.1", which is a real coordinate.
+# heuristic - it will miss "51.5, -0.1", which is a real coordinate.
 _BARE_PAIR = re.compile(
     r'(?<![\d.\-])(-?\d{1,3}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})(?![\d.])'
 )
@@ -273,7 +273,7 @@ class GazetteerGeocoder(BaseGeocoder):
         """Every gazetteer name present, with the spans where it occurs.
 
         Longest name first, and spans already claimed by a longer name are not
-        offered to a shorter one — so "Washington, D.C." is not also counted as
+        offered to a shorter one - so "Washington, D.C." is not also counted as
         a hit on some other Washington.
         """
         claimed: list[tuple[int, int]] = []
@@ -354,7 +354,7 @@ class GazetteerGeocoder(BaseGeocoder):
                     'label': (
                         f'{what} was named ({first.name}). The pin is a '
                         f'representative point inside it, not the site of '
-                        f'anything — read it as "somewhere in {first.name}".'
+                        f'anything - read it as "somewhere in {first.name}".'
                     ),
                     'effect': 'limits',
                 }, LOW
@@ -362,7 +362,7 @@ class GazetteerGeocoder(BaseGeocoder):
                 'label': (
                     f'"{first.name}" appears in the gazetteer exactly once, so '
                     f'nothing had to be chosen between. Confidence is held at '
-                    f'medium because the table is small — a second {first.name} '
+                    f'medium because the table is small - a second {first.name} '
                     f'it does not carry would not have shown up as a conflict.'
                 ),
                 'effect': 'located',
@@ -374,8 +374,8 @@ class GazetteerGeocoder(BaseGeocoder):
             place, qualifier = qualified
             return place, {
                 'label': (
-                    f'"{name}" is ambiguous — the gazetteer holds '
-                    f'{len(candidates)} of them — and the text resolves it '
+                    f'"{name}" is ambiguous - the gazetteer holds '
+                    f'{len(candidates)} of them - and the text resolves it '
                     f'itself by writing "{qualifier}".'
                 ),
                 'effect': 'located',
@@ -459,7 +459,7 @@ def _name_pattern(name: str) -> re.Pattern:
     """Word-bounded, case-insensitive, tolerant of runs of whitespace.
 
     Case-insensitive here and capitalisation enforced separately, because
-    "SANAA" in a headline is a place and "sanaa" in a URL slug is not — the
+    "SANAA" in a headline is a place and "sanaa" in a URL slug is not - the
     pattern finds both and _looks_like_a_place decides.
     """
     pattern = _PATTERN_CACHE.get(name)
@@ -467,7 +467,7 @@ def _name_pattern(name: str) -> re.Pattern:
         body = r'\s+'.join(re.escape(word) for word in name.split())
         # (?!\w) rather than \b for the tail. \b after a full stop demands a
         # word character next, so "Washington, D.C." matched only when the
-        # sentence ran straight on into another word — which is to say, in
+        # sentence ran straight on into another word - which is to say, in
         # real text, never.
         pattern = re.compile(rf'(?<!\w){body}(?!\w)', re.IGNORECASE)
         _PATTERN_CACHE[name] = pattern
@@ -482,7 +482,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in kilometres.
 
     This is the one thing PostGIS was going to be needed for, and at the scale
-    this module works at — a few thousand events filtered in a request — doing
+    this module works at - a few thousand events filtered in a request - doing
     it in Python costs nothing measurable. It uses a spherical earth, so it is
     off by up to about 0.5% against the ellipsoid; for "events within 50km"
     that is a rounding error, and for anything where it is not, this module is

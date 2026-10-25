@@ -51,4 +51,4 @@ class SiteInspectionAdmin(admin.ModelAdmin):
 
     @admin.display(description='Rating', ordering='score')
     def rating_out_of_ten(self, obj):
-        return f'{obj.score:.1f}/10' if obj.score is not None else '—'
+        return f'{obj.score:.1f}/10' if obj.score is not None else '-'

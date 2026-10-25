@@ -95,7 +95,7 @@ export async function login(username, password) {
 async function authedFetch(path, options = {}, _retried = false) {
   const token = readToken(ACCESS)
   // A file upload must go as multipart, and the boundary is only known to the
-  // browser — setting Content-Type by hand here would send a header with no
+  // browser - setting Content-Type by hand here would send a header with no
   // boundary in it and the upload would arrive empty.
   const isUpload = typeof FormData !== 'undefined' && options.body instanceof FormData
   const res = await fetch(path, {
@@ -125,8 +125,8 @@ export async function apiFetch(path, options = {}) {
  * Fetch a file and hand it to the browser as a download.
  *
  * Not a plain <a href> or a new tab: these endpoints want the bearer token,
- * and a link carries no Authorization header. The other way round — putting
- * the token in the query string — would write a live credential into every
+ * and a link carries no Authorization header. The other way round - putting
+ * the token in the query string - would write a live credential into every
  * proxy log, server log, and browser history entry between here and Django.
  */
 export async function apiDownload(path, fallbackName = 'download') {

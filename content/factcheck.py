@@ -4,8 +4,8 @@ What this layer adds
 --------------------
 Everything else in Module 2 measures *coverage*: who else reported this, and
 do their figures match. That is a machine reading text. This layer asks a
-different question — **has a professional fact-checker already ruled on
-something like this?** — and the answer, when there is one, was written by a
+different question - **has a professional fact-checker already ruled on
+something like this?** - and the answer, when there is one, was written by a
 person who did the work.
 
 The Google Fact Check Tools API indexes ClaimReview markup published by IFCN
@@ -27,7 +27,7 @@ So:
    shifts on a keyword overlap is arithmetic wearing a finding's clothes, and
    this module has already had one of those. What the analyst gets instead is
    the publisher, the claim as the fact-checker stated it, their verdict in
-   their own words, and a link — which is enough to settle the question in
+   their own words, and a link - which is enough to settle the question in
    about ten seconds, by reading, which is the correct way to settle it.
 2. **Close and loose matches are labelled differently** and never merged. A
    close match shares most of the article's search terms with the claim the
@@ -39,7 +39,7 @@ So:
    "Four Pinocchios", "Pants on Fire" and "Altered photo" are all FALSE here,
    and all three mean something more specific than that.
 4. **No key means no answer, not an empty answer.** An unconfigured client
-   reports `disabled`, exactly as `NullSearch` does — because a console that
+   reports `disabled`, exactly as `NullSearch` does - because a console that
    renders "no fact-checks found" when nobody looked is lying to an analyst.
 
 What it cannot do
@@ -108,7 +108,7 @@ STATUS_LABELS = {
 }
 
 # Our bucket for the publisher's own wording. Lossy by design; see the module
-# docstring. UNRATED is not a failure — it is the honest result for a rating
+# docstring. UNRATED is not a failure - it is the honest result for a rating
 # whose meaning we cannot read off a phrase.
 FALSE = 'false'
 MIXED = 'mixed'
@@ -297,7 +297,7 @@ class NullFactCheckClient(BaseFactCheckClient):
 
 
 class GoogleFactCheckClient(BaseFactCheckClient):
-    """Google's Fact Check Tools API — an index of publishers' ClaimReview.
+    """Google's Fact Check Tools API - an index of publishers' ClaimReview.
 
     Key-gated. Without `CONTENT_FACT_CHECK_API_KEY` it reports `no_key` and
     makes no request at all: a 403 from an unauthenticated call would arrive

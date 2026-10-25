@@ -30,17 +30,17 @@ class MediaItemAdmin(admin.ModelAdmin):
 
     @admin.display(description='SHA-256', ordering='sha256')
     def short_hash(self, obj):
-        return f'{obj.sha256[:16]}…' if obj.sha256 else '—'
+        return f'{obj.sha256[:16]}…' if obj.sha256 else '-'
 
     @admin.display(description='Size')
     def dimensions(self, obj):
-        return f'{obj.width}×{obj.height}' if obj.width and obj.height else '—'
+        return f'{obj.width}×{obj.height}' if obj.width and obj.height else '-'
 
     @admin.display(description='Latest verdict')
     def latest_verdict(self, obj):
         # prefetched above, and TamperingResult is ordered newest-first.
         results = list(obj.tampering_results.all())
-        return _verdict_badge(results[0].verdict) if results else '—'
+        return _verdict_badge(results[0].verdict) if results else '-'
 
 
 @admin.register(TamperingResult)
@@ -67,14 +67,14 @@ class TamperingResultAdmin(admin.ModelAdmin):
 
     @admin.display(description='Summary')
     def summary(self, obj):
-        return (obj.details or {}).get('summary') or '—'
+        return (obj.details or {}).get('summary') or '-'
 
     @admin.display(description='Why this verdict')
     def why(self, obj):
         """The reasons, so the details blob does not have to be read as JSON."""
         reasons = (obj.details or {}).get('reasons') or []
         if not reasons:
-            return '—'
+            return '-'
         return format_html(
             '<ul style="margin:0;padding-left:18px">{}</ul>',
             format_html_join(

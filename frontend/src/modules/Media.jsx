@@ -16,7 +16,7 @@ const VERDICT_TONE = {
  * One line of the engine's working.
  *
  * A zero-point reason is not filler. It is how this module records something
- * it looked at and decided not to hold against the file — an embedded preview
+ * it looked at and decided not to hold against the file - an embedded preview
  * that agreed, or a measurement it takes but deliberately does not score.
  * Dropping those would leave the panel reading as a list of accusations.
  */
@@ -47,13 +47,13 @@ function FindingsGrid({ findings }) {
   if (!findings) return null
 
   const rows = [
-    ['Format', findings.format || '—'],
-    ['Stored quality', findings.estimated_quality ?? '—'],
-    ['Quantization tables', findings.quantization_profile || '—'],
-    ['Camera', [findings.camera_make, findings.camera_model].filter(Boolean).join(' ') || '—'],
-    ['Software', findings.software || '—'],
-    ['Captured', findings.captured_at || '—'],
-    ['Modified', findings.modified_at || '—'],
+    ['Format', findings.format || '-'],
+    ['Stored quality', findings.estimated_quality ?? '-'],
+    ['Quantization tables', findings.quantization_profile || '-'],
+    ['Camera', [findings.camera_make, findings.camera_model].filter(Boolean).join(' ') || '-'],
+    ['Software', findings.software || '-'],
+    ['Captured', findings.captured_at || '-'],
+    ['Modified', findings.modified_at || '-'],
     ['GPS in EXIF', findings.gps_present ? 'present' : 'absent'],
     ['Embedded preview', findings.thumbnail_present
       ? `present (differs by ${(findings.thumbnail_distance ?? 0).toFixed(3)})`
@@ -288,12 +288,12 @@ export default function Media() {
                         <td className="mono-dim">#{m.id}</td>
                         <td><Badge value={m.latest_verdict} /></td>
                         <td className="mono-dim">
-                          {m.width && m.height ? `${m.width}×${m.height}` : '—'}
+                          {m.width && m.height ? `${m.width}×${m.height}` : '-'}
                         </td>
                         <td className="mono-dim">
-                          {m.sha256 ? `${m.sha256.slice(0, 16)}…` : '—'}
+                          {m.sha256 ? `${m.sha256.slice(0, 16)}…` : '-'}
                         </td>
-                        <td className="mono-dim">{result?.model_version || '—'}</td>
+                        <td className="mono-dim">{result?.model_version || '-'}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button
                             type="button"

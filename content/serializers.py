@@ -23,7 +23,7 @@ class FactCheckMatchSerializer(serializers.ModelSerializer):
     """A published fact-check, with the publisher's own wording preserved.
 
     `rating` is what the fact-checker wrote; `verdict` is our coarse bucket for
-    it. Both are sent because the bucket is lossy — the console shows the words
+    it. Both are sent because the bucket is lossy - the console shows the words
     and colours by the bucket.
     """
 
@@ -113,7 +113,7 @@ class ContentItemSerializer(serializers.ModelSerializer):
 
 
 class FetchRequestSerializer(serializers.Serializer):
-    """Body for POST /api/content/fetch/ — one link, or one source's feed."""
+    """Body for POST /api/content/fetch/ - one link, or one source's feed."""
 
     url = serializers.CharField(required=False, allow_blank=True)
     source = serializers.IntegerField(required=False)

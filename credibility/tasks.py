@@ -49,7 +49,7 @@ def refresh_domain_registration(source_id, force=False):
 
     # Saved through the instance rather than with a queryset .update() so the
     # post_save signal fires. Registration data is the evidence a credibility
-    # score is computed from, so a change to it belongs in the audit log —
+    # score is computed from, so a change to it belongs in the audit log -
     # otherwise a score can move with no record of what moved it.
     source.domain_registered_at = info.registered_at or source.domain_registered_at
     source.registrar = info.registrar or source.registrar
@@ -73,7 +73,7 @@ def score_source(self, source_id):
         source = Source.objects.get(pk=source_id)
     except ObjectDoesNotExist:
         # The source was deleted between enqueue and execution. Nothing to
-        # retry — a missing row will stay missing.
+        # retry - a missing row will stay missing.
         logger.warning('score_source: Source %s no longer exists', source_id)
         return None
 

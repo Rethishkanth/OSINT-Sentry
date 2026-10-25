@@ -49,7 +49,7 @@ class SiteInspectionViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'])
     def clear(self, request):
-        """POST /api/credibility/inspections/clear/ — empty the safety log.
+        """POST /api/credibility/inspections/clear/ - empty the safety log.
 
         Marks rows cleared instead of deleting them. Pass `source` to clear
         one site. Credibility assessments live in a different table and are
@@ -70,13 +70,13 @@ class SiteInspectionViewSet(viewsets.ReadOnlyModelViewSet):
             'source': source.pk if source else None,
             'detail': (
                 f'{cleared} inspection(s) cleared. They are hidden, not '
-                'deleted — assessments and tracked sources are unaffected.'
+                'deleted - assessments and tracked sources are unaffected.'
             ),
         })
 
     @action(detail=False, methods=['post'])
     def restore(self, request):
-        """POST /api/credibility/inspections/restore/ — undo a clear."""
+        """POST /api/credibility/inspections/restore/ - undo a clear."""
         serializer = ClearInspectionsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         source = serializer.validated_data.get('source')
@@ -91,7 +91,7 @@ class SiteInspectionViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['POST'])
 def trigger_inspection(request):
-    """POST /api/credibility/inspect/ — look inside a site and rate it.
+    """POST /api/credibility/inspect/ - look inside a site and rate it.
 
     Runs inline: it fetches the homepage and opens a TLS connection, so a few
     seconds is normal, and the caller is waiting for a rating rather than a
@@ -111,7 +111,7 @@ def trigger_inspection(request):
 
 @api_view(['POST'])
 def trigger_scoring(request):
-    """POST /api/credibility/score/ — request a score for a Source."""
+    """POST /api/credibility/score/ - request a score for a Source."""
     serializer = ScoreRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     source = serializer.validated_data['source']

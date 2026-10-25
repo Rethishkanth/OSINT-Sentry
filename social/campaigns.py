@@ -54,7 +54,7 @@ class DetectedCampaign:
 
         Re-running the detector over an unchanged graph has to land on the
         same row rather than stacking a second copy of every campaign. Adding
-        a member makes it a different cluster, which is correct — it is.
+        a member makes it a different cluster, which is correct - it is.
         """
         members = ','.join(str(i) for i in sorted(self.account_ids))
         return hashlib.sha256(members.encode()).hexdigest()
@@ -248,7 +248,7 @@ class OverlapCampaignDetector(BaseCampaignDetector):
                 f'{len(component)} accounts interact with the same '
                 f'{len(common)} {plural(len(common), "account")}',
                 f'{members} all interact with {shown}. Every member of the '
-                'group hits every one of those targets — this is a common '
+                'group hits every one of those targets - this is a common '
                 'core, not a chain of pairwise resemblances.',
                 'campaign',
             ),

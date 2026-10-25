@@ -5,7 +5,7 @@ Django REST API backend + Vite/React frontend for the OSINT-Sentry analysis plat
 All five analysis modules are built and wired to the console: source
 credibility and site safety (1), content fetching, corroboration and
 fact-check lookup (2), social graph and campaign detection (3), media
-forensics (4), and geolocation and reporting (5) — with audit logging across
+forensics (4), and geolocation and reporting (5) - with audit logging across
 every model.
 
 One rule runs through all five, and most of the design follows from it:
@@ -16,7 +16,7 @@ Every module can decline to answer, and when it declines it says why in the
 same place it would have put the number. A failed corroboration search, an
 account with too little graph to judge, an image whose JPEG history makes error
 level analysis meaningless, a place name the gazetteer does not carry, a
-fact-check lookup with no API key — each records *what it could not establish*
+fact-check lookup with no API key - each records *what it could not establish*
 rather than a zero. A zero and "nobody looked" are the same glyph on a
 dashboard and are not the same finding.
 
@@ -25,8 +25,8 @@ dashboard and are not the same finding.
 The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
 analysis, and an RGCN plus RoBERTa for social graph work. **None of those models
 exist here.** Each one is an abstract base class with a dependency-free
-heuristic implementation behind it, so the pipeline — tasks, gating, signals,
-endpoints, admin — is real and testable today.
+heuristic implementation behind it, so the pipeline - tasks, gating, signals,
+endpoints, admin - is real and testable today.
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
@@ -36,22 +36,22 @@ endpoints, admin — is real and testable today.
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) |
 | `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa |
 | `SOCIAL_CAMPAIGN_DETECTOR` | `social.campaigns.BaseCampaignDetector` | shared-target overlap + connected components with a common core | graph clustering |
-| `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** ELA, JPEG quantisation, metadata — declining where ELA is meaningless | ViT deepfake detection |
+| `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** ELA, JPEG quantisation, metadata - declining where ELA is meaningless | ViT deepfake detection |
 | `REPORTGIS_GEOCODER` | `reportgis.geocode.BaseGeocoder` | **real** gazetteer compiled into the source; no service, no key | Nominatim / commercial geocoder |
 | `REPORTGIS_REPORT_BUILDER` | `reportgis.reporting.BaseReportBuilder` | Markdown assembled from counted figures, never generated prose | LLM narrative generation |
-| `CONTENT_FACT_CHECK_CLIENT` | `content.factcheck.BaseFactCheckClient` | null client; **real** Google Fact Check Tools behind an API key | — |
+| `CONTENT_FACT_CHECK_CLIENT` | `content.factcheck.BaseFactCheckClient` | null client; **real** Google Fact Check Tools behind an API key | - |
 
 Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
 in a real model is a settings change; no call site moves.
 
-## Module 1: is the site itself safe? — a second rating out of 10
+## Module 1: is the site itself safe? - a second rating out of 10
 
 The credibility score reads registration metadata. That says nothing about
 what the site *serves*. **Inspect site** fetches the homepage, opens a TLS
 connection, and reads the certificate, the response headers and the markup,
-then rates out of 10 how safe and how cluttered the site is — SAFE, MOSTLY
-SAFE, SOME CONCERNS, CAUTION, UNSAFE — with every deduction shown.
+then rates out of 10 how safe and how cluttered the site is - SAFE, MOSTLY
+SAFE, SOME CONCERNS, CAUTION, UNSAFE - with every deduction shown.
 
 Real results, same run:
 
@@ -64,25 +64,25 @@ and the second one names them: Google Ad Manager, AdSense, Taboola, Criteo,
 Amazon Ads, Xandr, 33Across; Chartbeat, Comscore, Google Analytics.
 
 **This is deliberately not folded into the credibility score.** The two answer
-different questions — "is this publisher reliable" versus "is this site safe
-to open" — and a reputable outlet buried in advertising should show both
+different questions - "is this publisher reliable" versus "is this site safe
+to open" - and a reputable outlet buried in advertising should show both
 facts rather than one number that splits the difference. The credibility
 score's documented ceiling and provenance hash stay untouched.
 
 ### What it checks
 
-- **Transport** — HTTPS, whether plain HTTP is upgraded, and the certificate:
+- **Transport** - HTTPS, whether plain HTTP is upgraded, and the certificate:
   issuer, protocol, days to expiry, and *why* it is invalid when it is
   (Python's own verification message, which is already in plain English).
-- **What the site declares** — HSTS, CSP, X-Content-Type-Options, clickjacking
+- **What the site declares** - HSTS, CSP, X-Content-Type-Options, clickjacking
   protection, Referrer-Policy. Absence is not an attack; a site with none of
   them is not paying attention.
-- **Monetisation and surveillance** — ad networks, aggressive pop-under
+- **Monetisation and surveillance** - ad networks, aggressive pop-under
   networks, trackers, session recorders, push-notification nagware, and
   in-browser crypto miners, matched against a plain readable list in
   `credibility/trackers.py` so a finding can be argued with. Inline snippets
   (`gtag(`, `fbq(`) are caught even when the script host is self-hosted.
-- **Clutter** — pop-up and interstitial containers, auto-playing media,
+- **Clutter** - pop-up and interstitial containers, auto-playing media,
   embedded frames, meta-refresh redirects, third-party resource volume.
 - **Mixed content and insecure forms**, including the one thing that overrides
   everything else.
@@ -97,7 +97,7 @@ reported and lightly penalised because advertising is normal commercial
 publishing; a miner is not a monetisation choice anyone discloses.
 
 **Unreachable is not unsafe.** A site that will not answer gets *no rating*
-rather than a bad one — the same rule as a failed registry lookup, and the
+rather than a bad one - the same rule as a failed registry lookup, and the
 same rule the corroboration engine follows.
 
 ### Clearing the safety log
@@ -105,7 +105,7 @@ same rule the corroboration engine follows.
 **Clear log** on the Site safety panel empties the view. It sets a `cleared_at`
 flag rather than deleting rows, so:
 
-- nothing is destroyed — **Show cleared** reads the archive back, and
+- nothing is destroyed - **Show cleared** reads the archive back, and
   **Restore** returns it to the live log;
 - the **Assessment log** is a different table and is not touched, so a site
   whose inspections were cleared still has every credibility assessment it
@@ -113,7 +113,7 @@ flag rather than deleting rows, so:
 - the site is still a tracked source, still scored, still crawlable.
 
 An analyst emptying a view is saying "I have read these", not "destroy the
-evidence" and certainly not "forget the site" — so clearing costs nothing but
+evidence" and certainly not "forget the site" - so clearing costs nothing but
 the view.
 
 ### Two things it is not
@@ -128,7 +128,7 @@ footnote.
 
 ## Submitting a website for scoring
 
-The **Check a website** box on the Credibility page takes whatever you have —
+The **Check a website** box on the Credibility page takes whatever you have -
 a pasted article URL, a copied address bar, or a bare hostname. It is reduced
 server-side to the domain a registry will answer for, so all of these are the
 same source:
@@ -143,7 +143,7 @@ bbc.co.uk
 Normalising happens in `core.domains`, not in the console, so the API, the
 admin, and a shell one-liner cannot disagree about what `bbc.co.uk` is.
 Submitting a site that is already tracked re-scores it rather than returning a
-uniqueness error — someone pasting a link is asking "check this", and "you
+uniqueness error - someone pasting a link is asking "check this", and "you
 already added that" answers a question they did not ask.
 
 Inputs that name no domain are rejected with the reason: an IP address (no
@@ -152,18 +152,18 @@ something with no domain suffix, or illegal characters.
 
 A pasted `https://` link is also recorded as the source's URL, since it is
 direct evidence the site serves TLS. Without one, transport reads as
-*unknown* and costs nothing — only an observed plaintext URL is penalised.
+*unknown* and costs nothing - only an observed plaintext URL is penalised.
 
 ## Module 1: what the credibility score actually measures
 
 Module 1 is no longer a placeholder. It reads **real domain registration data
-over RDAP** — the registries' own JSON-over-HTTP successor to WHOIS. No API
+over RDAP** - the registries' own JSON-over-HTTP successor to WHOIS. No API
 key, no scraping, no third-party dependency, just `urllib`.
 
 That matters because the previous version faked it. It computed "domain age"
-from `Source.first_seen` — how long *this database* had known about the source
-— so a 30-year-old newspaper added today was penalised as new, while any row
-that had sat in the table for a year drifted upward. `heuristic-v2` fixes the
+from `Source.first_seen`, which is how long *this database* had known about
+the source, so a 30-year-old newspaper added today was penalised as new,
+while any row that had sat in the table for a year drifted upward. `heuristic-v2` fixes the
 inversion:
 
 | Case | v1 | v2 |
@@ -173,8 +173,8 @@ inversion:
 
 Other deliberate choices:
 
-- **HTTPS earns nothing.** It is free, automatic, and universal — every phishing
-  site has it — so its presence is not evidence. An observed *plaintext* URL
+- **HTTPS earns nothing.** It is free, automatic, and universal - every phishing
+  site has it - so its presence is not evidence. An observed *plaintext* URL
   still costs 10; a source with no URL recorded is scored as unknown, not as
   insecure.
 - **"Known to us" is recorded but never scored.** Rewarding it is circular. It
@@ -196,7 +196,7 @@ run fully offline.
 ## Module 2: reading the web without being a nuisance
 
 Module 2 is the part that actually goes and gets things. Before it existed the
-pipeline was real but starved — `NullFetcher` meant nothing was ever ingested
+pipeline was real but starved - `NullFetcher` meant nothing was ever ingested
 unless a human POSTed it.
 
 It is **feed-first**. For each source it finds the RSS/Atom feed the publisher
@@ -212,7 +212,7 @@ Two things run before any request goes out:
   is never contacted at all. Letting the gate reject items *after* fetching
   would mean spending someone else's bandwidth on documents we intend to
   discard.
-- **robots.txt, on every hop.** Including redirect targets — which is why
+- **robots.txt, on every hop.** Including redirect targets - which is why
   redirects are followed by hand rather than by `urllib`. A site that could
   redirect us past its own rules would make the check decorative.
 
@@ -239,14 +239,14 @@ refused.** A submitted domain is attacker-controlled input; without that check
 a link pointing at `169.254.169.254` turns this fetcher into a proxy into the
 machine it runs on. The check is on every hop, so a redirect cannot smuggle
 one in. It resolves and then connects, so a determined DNS-rebinding attack
-still has a window — closing that needs connecting to the pinned address,
+still has a window - closing that needs connecting to the pinned address,
 which `urllib` does not expose.
 
 Extraction is `html.parser`, not Scrapy: strip the furniture, prefer text
 inside `<article>`, fall back to paragraphs, then to the whole body. Metadata
 comes from OpenGraph, JSON-LD, and `article:*` before `<title>`. Storage is
 keyed on the page's **canonical URL**, so campaign parameters do not store one
-article five times. There is no JavaScript engine — a page rendered entirely
+article five times. There is no JavaScript engine - a page rendered entirely
 client-side yields nothing, and says so rather than storing an empty body.
 
 Feeds are parsed with `xml.etree`, which is documented as vulnerable to entity
@@ -259,15 +259,15 @@ A source found to have no feed is left alone for a day
 every hour. Clicking **Crawl feed** in the console overrides that, since the
 back-off exists to restrain the schedule, not the analyst.
 
-Set `CONTENT_FETCHER=content.fetchers.NullFetcher` to contact nobody — the
+Set `CONTENT_FETCHER=content.fetchers.NullFetcher` to contact nobody - the
 same switch `NullRegistryClient` gives Module 1.
 
-## Cross-referencing a story: the 0–10 rating
+## Cross-referencing a story: the 0-10 rating
 
 Reading a page is only half the question. The other half is *does anyone else
 say this*. Every stored article can be checked against other outlets, which
-produces a rating out of 10 and a tag — TRUSTWORTHY, LIKELY RELIABLE,
-PARTIALLY CORROBORATED, UNCORROBORATED, DISPUTED BY OTHERS, DO NOT TRUST —
+produces a rating out of 10 and a tag - TRUSTWORTHY, LIKELY RELIABLE,
+PARTIALLY CORROBORATED, UNCORROBORATED, DISPUTED BY OTHERS, DO NOT TRUST -
 logged newest-first in the console. Reading a page runs the check
 automatically.
 
@@ -290,7 +290,7 @@ adds up to the score:
 | Do its details match | 0.25 | the article's own figures, found in their text |
 
 When an article states nothing checkable, the third share passes to the second
-rather than being lost — otherwise a story with no numbers in it could not
+rather than being lost - otherwise a story with no numbers in it could not
 score above 7.5 however many outlets confirmed it. A conflicting figure costs
 1.5, capped at 3.0, so one contested number cannot drive a story to zero.
 
@@ -298,14 +298,14 @@ score above 7.5 however many outlets confirmed it. A conflicting figure costs
 
 Four backends run together: what we have already ingested, the **live feeds of
 other tracked outlets**, a standing **panel of major newsrooms** in
-`content/reference_outlets.py` — consulted whether or not anyone registered
-them as sources — and **GDELT's DOC 2.0 API**, a free, key-less index of
+`content/reference_outlets.py` - consulted whether or not anyone registered
+them as sources - and **GDELT's DOC 2.0 API**, a free, key-less index of
 global news chosen for the same reason Module 1 uses RDAP.
 
 The reference panel exists because without it a fresh install can only
 cross-reference against the one or two feeds someone has added, and reports
 every story as uncorroborated: truthfully, but having looked nowhere. Nothing
-on that list is treated as authoritative — an outlet we do not track is scored
+on that list is treated as authoritative - an outlet we do not track is scored
 at neutral credibility like any other unknown domain, so being on it buys a
 match nothing beyond being looked at.
 
@@ -316,8 +316,8 @@ their actual text rather than a nine-word headline. `CORROBORATION_DEEP_READS`
 
 ### Checking what the article actually says
 
-`content/claims.py` pulls the article's checkable specifics — figures, sums,
-percentages, dates — and looks for those same specifics in the text of the
+`content/claims.py` pulls the article's checkable specifics - figures, sums,
+percentages, dates - and looks for those same specifics in the text of the
 outlets that were read. Each one comes back `agreed`, `disputed`, or
 `unverified`, never `true` or `false`: every outlet copying one wrong figure
 off one wire report agrees perfectly, and a disputed figure may be a correction
@@ -328,7 +328,7 @@ article of getting a fact wrong. So a conflict is only reported when the other
 outlet is demonstrably discussing the same quantity: two or more of the claim's
 context words present, the rival figure within a short span of them, the same
 kind of quantity (money is never compared against percentages), the same
-magnitude, and the same counted noun — 47 *people* is only ever contradicted by
+magnitude, and the same counted noun - 47 *people* is only ever contradicted by
 another count of people. Every one of those guards is there because its absence
 produced a wrong answer on a live article.
 
@@ -336,7 +336,7 @@ produced a wrong answer on a live article.
 
 Everything above is a machine reading text. This part is different: it looks up
 work a *person* did. `content/factcheck.py` queries the Google Fact Check Tools
-API, which indexes the ClaimReview markup published by IFCN signatories — Full
+API, which indexes the ClaimReview markup published by IFCN signatories - Full
 Fact, PolitiFact, Snopes, AFP, Boom Live, Africa Check and several hundred
 others. What comes back is a citation, and a citation is the one output of this
 platform that needs no defending.
@@ -351,14 +351,14 @@ CONTENT_FACT_CHECK_API_KEY=your-key
 
 Enable the Fact Check Tools API on a Google Cloud project and create a key for
 it. Without the key the client reports **`no_key`** and makes no request at
-all — an unauthenticated call returns 403, and a 403 arriving as "lookup
+all - an unauthenticated call returns 403, and a 403 arriving as "lookup
 failed" is a more alarming thing on screen than a feature nobody has
 configured.
 
 **A fact-check never moves the rating, in either direction.** This is the rule
 the layer is built around, and it is a restriction rather than a shortcut. The
 lookup is matched on the article's search terms, so a hit means *somebody has
-written about something like this* — and a query about flooding in Kerala will
+written about something like this* - and a query about flooding in Kerala will
 happily return a fact-check of a different claim about flooding in Kerala. A
 number that shifts on a keyword overlap is a guess with a decimal point on it,
 and this module has already shipped one of those. So the working line for the
@@ -367,7 +367,7 @@ unaffected, because a reader who assumes the number already accounts for a
 fact-checker's ruling will quietly discount it twice.
 
 What the analyst gets instead is the publisher, the claim as the fact-checker
-stated it, their verdict in their own words, and a link — enough to settle the
+stated it, their verdict in their own words, and a link - enough to settle the
 question in about ten seconds, by reading, which is the correct way to settle
 it.
 
@@ -377,7 +377,7 @@ Three smaller decisions follow from the same caution:
   carries most of the article's search terms; a loose one is shown dimmed as a
   lead to follow. Only close matches are counted as negative, because a warning
   colour on a keyword coincidence is worse than no panel at all. Below two
-  shared terms nothing is reported — one shared proper noun is a coincidence,
+  shared terms nothing is reported - one shared proper noun is a coincidence,
   and coincidences printed beside the word FALSE are how a console libels
   someone.
 * **The publisher's own wording always survives.** `textualRating` is free text
@@ -393,13 +393,13 @@ Three smaller decisions follow from the same caution:
 What it cannot do: tell you an unchecked claim is true. The overwhelming
 majority of news has never been fact-checked by anyone, so absence here means
 absence and nothing else. It also only sees fact-checks published with
-ClaimReview markup — a fact-check that exists but was never marked up does not
+ClaimReview markup - a fact-check that exists but was never marked up does not
 exist to this layer.
 
 ### Why every article used to score 3.1
 
 Worth recording, because the arithmetic was never the problem. Almost every
-article came back rated 3.1/10 — which is exactly `0.45 × (68 ÷ 10)`, the
+article came back rated 3.1/10 - which is exactly `0.45 × (68 ÷ 10)`, the
 source-credibility half of the old formula with corroboration contributing
 precisely zero, on story after story.
 
@@ -407,7 +407,7 @@ The cause was the query. Search terms were ranked by how often each proper noun
 appeared *anywhere on the fetched page*, so navigation menus and sidebar promos
 outvoted the story. An article headlined "RBI intervention, dollar flows push
 Indian rupee to two-month peak" was searched for as **`Indian, Budget, share,
-price`** — not one word of which is in the headline — and the 139 unrelated
+price`** - not one word of which is in the headline - and the 139 unrelated
 articles that came back were then correctly rejected, one at a time, down to
 zero.
 
@@ -416,7 +416,7 @@ position is the signal that survives scraping: page furniture repeats endlessly
 and sits everywhere, while a story's subject is in its headline. A term the
 site prints on every article it publishes is recognised as furniture and
 discounted, weekdays and months are discarded outright, and how often the
-article returns to a headline word separates the subject from the sub-editor —
+article returns to a headline word separates the subject from the sub-editor -
 "floods" recurs throughout a flooding story, "spotlights" appears once. The same
 article now searches `Indian, RBI, intervention`, and the Ukraine story that
 scored 3.1 scores 9.0 on eight independent outlets.
@@ -429,7 +429,7 @@ version got this wrong in a way worth recording: `CompositeSearch` reported
 itself available whenever *any* backend answered, and since the stored-item
 backend never fails and usually finds nothing, a rate-limited GDELT became a
 confident "3.4/10, uncorroborated" on a story that had never actually been
-cross-referenced. Availability is now asymmetric — finding corroboration is
+cross-referenced. Availability is now asymmetric - finding corroboration is
 valid even if part of the search failed, but finding *none* is only meaningful
 if we looked everywhere.
 
@@ -440,14 +440,14 @@ outlet.
 
 **Silence is not guilt.** An outlet Module 1 rates well being first to report
 something is tagged UNCORROBORATED, never DO NOT TRUST. That tag is reserved
-for a source Module 1 has already condemned — which conversely is not
+for a source Module 1 has already condemned - which conversely is not
 rehabilitated by a handful of keyword matches.
 
 Similarity is measured against the article's five strongest terms rather than
 all of them: most candidates are known only by their headline, and a headline
 cannot carry a dozen terms. Dividing by all of them scored genuinely matching
 coverage at 25% and discarded it. Once a candidate has been read in full its
-body is matched too, which is both fairer and stricter — an outlet sharing one
+body is matched too, which is both fairer and stricter - an outlet sharing one
 headline word but never mentioning the subject stops scoring, and one covering
 the story properly under a cryptic headline starts.
 
@@ -461,7 +461,7 @@ not get to obey robots.txt only when convenient.
 
 ### Testing it
 
-`content/tests.py` is 135 tests, and `credibility/tests.py` a further 27 —
+`content/tests.py` is 135 tests, and `credibility/tests.py` a further 27 -
 and **none of them touch the network**: everything outbound is behind
 `content.http.request`, a search backend, or a fact-check client, so the tests
 replace those and drive the whole pipeline on canned data.
@@ -470,7 +470,7 @@ replace those and drive the whole pipeline on canned data.
 .venv/Scripts/python.exe manage.py test content
 ```
 
-They cover the cases that are hard to check by eye — robots.txt returning 503,
+They cover the cases that are hard to check by eye - robots.txt returning 503,
 a redirect pointing at `127.0.0.1`, a feed declaring a DOCTYPE, an oversized
 body, a page that is mostly navigation, a low-scoring source proving it is
 never contacted, a partial search refusing to condemn, eight syndicated copies
@@ -484,7 +484,7 @@ record itself as counting 47 *officials*.
 
 ## Module 3: which accounts are acting together?
 
-`social/` reads the shape of the interaction graph and nothing else — no
+`social/` reads the shape of the interaction graph and nothing else - no
 profile text, no follower counts, no outside service. Two scorers and a
 detector, all abstaining.
 
@@ -498,7 +498,7 @@ those now record **no score** and a reason saying why, below
 `SOCIAL_MIN_INTERACTIONS` and `SOCIAL_MIN_SHARED_TARGETS` (both 3).
 
 The console draws an unscored account **hollow** in the graph and writes *"n
-accounts carry no score — too little graph to judge on, not a clean bill of
+accounts carry no score - too little graph to judge on, not a clean bill of
 health"* beside the flag count. A null that renders as green is an account the
 scorer refused to judge, shown in the colour of one it cleared.
 
@@ -519,7 +519,7 @@ keep it from flattering itself:
 
 A campaign is keyed by its membership, so re-running updates the row rather
 than stacking a second copy, and a cluster a later pass does not find again is
-kept and marked stale rather than deleted — the graph changing underneath it is
+kept and marked stale rather than deleted - the graph changing underneath it is
 a fact about the capture.
 
 **Nothing here asserts intent**, and every cluster carries the line saying so.
@@ -538,7 +538,7 @@ scores low, and accounts too thin to judge.
 
 ## Module 4: has this image been altered?
 
-`media/forensics.py` is real forensics on Pillow alone — no model, no service.
+`media/forensics.py` is real forensics on Pillow alone - no model, no service.
 It reads the JPEG quantisation tables, the metadata, the dimensions and the
 recompression history, and it runs error level analysis.
 
@@ -549,7 +549,7 @@ for an image compressed once. It does not hold for a PNG, which has no JPEG
 history to compare against, nor for an image saved five times by five apps, nor
 for one whose quantisation tables show it was already recompressed at a quality
 far from the one we would test at. In each of those the ELA image is bright and
-meaningless — and a bright ELA image is *extremely* persuasive to look at.
+meaningless - and a bright ELA image is *extremely* persuasive to look at.
 
 So ELA is scored only where its assumptions hold, and where they do not the
 result says which assumption failed instead of producing a number. Every
@@ -562,18 +562,18 @@ analyst can argue with rather than an assertion.
 service**. `GeoEvent` stores plain latitude and longitude floats, and
 `reportgis/gazetteer.py` is a place-name table compiled into the source. A name
 the table does not carry is reported as *not found*; it is never sent anywhere.
-That is why every module reports online on a machine with nothing installed —
+That is why every module reports online on a machine with nothing installed -
 the PostGIS `PointField` this model used to carry kept the whole app out of
 `INSTALLED_APPS` and drew an OFFLINE panel on the console.
 
 Extraction reads the entities Module 2 already found, so geolocation is a
 downstream reading of an analysed article rather than a second pass over its
-text. Each event records how it was placed — `located` or `limits` — and
+text. Each event records how it was placed - `located` or `limits` - and
 `ExtractionRun` logs every pass, including the ones that placed nothing, for
 the same reason `CampaignRun` does.
 
 **Reports are assembled, not generated.** `reportgis/reporting.py` builds
-Markdown out of counted figures — no prose is invented, and there is no model
+Markdown out of counted figures - no prose is invented, and there is no model
 in the path. Every report carries a **Gaps** section listing what it cannot
 show: the articles that yielded no location, the events placed only to a
 country, the window that was empty. A report whose limitations are in the
@@ -583,7 +583,7 @@ report is one an analyst can hand to somebody else.
 
 ```
 backend/          Django project (settings split into base/dev/prod)
-  settings/       base.py, dev.py, prod.py — configured via .env
+  settings/       base.py, dev.py, prod.py - configured via .env
   celery.py       Celery app instance
 core/             Source model, DRF router, shared exception handler, tasks
 accounts/         Role groups (Analyst / Reviewer / Admin) as a data migration
@@ -609,7 +609,7 @@ social/           SocialAccount, InteractionEdge, SocialPost, Campaign
   management/commands/seed_social_demo.py  a synthetic graph for the console
 media/            MediaItem, TamperingResult
   forensics.py    ELA, JPEG quantisation tables, metadata; Pillow only
-reportgis/        GeoEvent, Report, ExtractionRun — plain lat/lon, no GDAL
+reportgis/        GeoEvent, Report, ExtractionRun - plain lat/lon, no GDAL
   gazetteer.py    the place-name table, compiled into the source
   geocode.py      name -> coordinates, reporting what it could not place
   reporting.py    Markdown reports assembled from counted figures
@@ -635,10 +635,10 @@ position is written straight to the DOM in a `requestAnimationFrame` loop
 rather than React state, since `mousemove` fires far faster than a component
 should re-render.
 
-Visual design is an original take on a high-contrast cyberpunk console —
+Visual design is an original take on a high-contrast cyberpunk console -
 acid yellow on near-black, angular clipped panels, cyan/magenta accents. No
 third-party assets, fonts, or marks are used, and there are **no runtime npm
-dependencies beyond React** — the graph and map are hand-rolled SVG.
+dependencies beyond React** - the graph and map are hand-rolled SVG.
 
 Anyone who has asked their system for reduced motion gets a static, fully
 legible console: the glitch, scanline, and cursor effects switch off.
@@ -649,8 +649,8 @@ Only Python 3.11 and Node.js. There is deliberately **no server to install**
 for local work: the database is SQLite, Celery uses kombu's filesystem
 transport with results stored in the database, geolocation resolves against a
 table compiled into the source, and image forensics needs nothing beyond
-Pillow. No module requires an API key to run; the one optional key — for
-published fact-checks — leaves its layer reporting *switched off* rather than
+Pillow. No module requires an API key to run; the one optional key - for
+published fact-checks - leaves its layer reporting *switched off* rather than
 failing when it is absent.
 
 ## Setup
@@ -679,12 +679,12 @@ CREATE DATABASE osint_sentry;
 **There is no `USE_GIS` switch and no PostGIS requirement.** There used to be
 both. `GeoEvent` stored a PostGIS `PointField`, which meant `django.contrib.gis`
 had to be importable, which meant a machine without GDAL dropped the entire
-`reportgis` app out of `INSTALLED_APPS` — and the console drew Module 5 as
+`reportgis` app out of `INSTALLED_APPS` - and the console drew Module 5 as
 OFFLINE on every machine that had not installed OSGeo4W. The geometry is two
 float columns now and the app loads everywhere, which is the right trade for a
 platform whose spatial work is "put a dot on a map".
 
-If you later need real spatial queries — distance, containment, projections —
+If you later need real spatial queries - distance, containment, projections -
 that is the point to bring PostGIS back, and it is a migration on two columns
 rather than a rewrite.
 
@@ -698,7 +698,7 @@ rather than a rewrite.
 cd frontend && npm run dev
 ```
 
-**The console is <http://localhost:5173> — not `:8000`.** Django serves the API
+**The console is <http://localhost:5173> - not `:8000`.** Django serves the API
 only; `:8000` is the backend, and its root just points back here. The Vite port
 is pinned with `strictPort`, so if 5173 is taken the dev server fails loudly
 instead of quietly moving to 5174.
@@ -719,7 +719,7 @@ Smoke-test the worker:
 
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
-| `GET /` | none | API index — endpoint map and the console's address |
+| `GET /` | none | API index - endpoint map and the console's address |
 | `GET /api/health/` | none | liveness check |
 | `POST /api/auth/token/` | none | obtain JWT access/refresh pair |
 | `POST /api/auth/token/refresh/` | none | refresh access token |
@@ -727,14 +727,14 @@ Smoke-test the worker:
 | `POST /api/sources/` | JWT | submit a site by URL or domain; 200 + rescore if already tracked |
 | `GET /api/credibility/` `.../{id}/` | JWT | scores with tier, rationale, provenance hash |
 | `POST /api/credibility/score/` | JWT | request a score (`wait: true` runs inline) |
-| `POST /api/credibility/inspect/` | JWT | inspect a site; returns a 0–10 safety rating and its evidence |
+| `POST /api/credibility/inspect/` | JWT | inspect a site; returns a 0-10 safety rating and its evidence |
 | `GET /api/credibility/inspections/` | JWT | the log of site inspections, newest first (`?cleared=1` for the archive, `?cleared=all` for both) |
 | `POST /api/credibility/inspections/clear/` | JWT | hide the safety log; optional `source` clears one site |
 | `POST /api/credibility/inspections/restore/` | JWT | undo a clear |
 | `GET /api/content/` `.../{id}/` | JWT | content with entities, topics, summary |
 | `GET /api/content/summary/` | JWT | corpus-wide counts, incl. `unchecked`; counted in the DB, not from the page |
 | `POST /api/content/fetch/` | JWT | read a live page (`url`) or crawl a source's feed (`source`) |
-| `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0–10 rating, its evidence, and any published fact-checks |
+| `POST /api/content/{id}/corroborate/` | JWT | cross-reference a story; returns a 0-10 rating, its evidence, and any published fact-checks |
 | `GET /api/content/corroborations/` | JWT | the log of credibility checks, newest first |
 | `POST /api/content/ingest/` | JWT | submit a document you already have; 409 if the gate rejects it |
 | `POST /api/content/{id}/analyze/` | JWT | re-run analysis |
@@ -764,7 +764,7 @@ Smoke-test the worker:
 ## How the modules connect
 
 1. Creating a `Source` fires a `post_save` signal that queues `score_source`
-   on commit — scoring is never triggered by hand.
+   on commit - scoring is never triggered by hand.
 2. `fetch_source` checks that score *before* making a single request, then
    reads the source's feed and fetches what is new. `ingest_item` re-checks it
    for anything arriving by other routes. A source below
@@ -781,7 +781,7 @@ Smoke-test the worker:
 5. Corroborating an article reads Module 1's score for both the article's own
    source and every outlet that matched it, so a rating is weighted by who is
    doing the corroborating. The fact-check lookup runs alongside and
-   independently — a fact-checker's ruling is worth citing whether or not the
+   independently - a fact-checker's ruling is worth citing whether or not the
    news search succeeded.
 6. `refresh_graph_scores` rebuilds the interaction graph and rescores every
    account in one bulk update; `detect_campaigns` then reads the same graph
@@ -791,7 +791,7 @@ Smoke-test the worker:
 
 **Analyst-triggered actions run inline, not queued.** The default broker is
 `filesystem://` with no worker attached, so a queued action would return
-202 Accepted to a console that then redraws the numbers it already had — the
+202 Accepted to a console that then redraws the numbers it already had - the
 button would look like it worked and would have done nothing. `.delay()` is
 for the scheduled sweeps below, where nobody is waiting on the answer.
 

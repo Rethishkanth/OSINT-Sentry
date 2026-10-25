@@ -29,7 +29,7 @@ class MediaItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def analyze(self, request, pk=None):
-        """POST /api/media/items/{id}/analyze/ — re-run the engine now."""
+        """POST /api/media/items/{id}/analyze/ - re-run the engine now."""
         item = self.get_object()
         analyze_media_item.run(item.pk)
         item.refresh_from_db()
@@ -37,7 +37,7 @@ class MediaItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='analyze-pending')
     def analyze_pending(self, request):
-        """POST /api/media/items/analyze-pending/ — sweep anything unseen."""
+        """POST /api/media/items/analyze-pending/ - sweep anything unseen."""
         async_result = analyze_unanalyzed.delay()
         return Response(
             {'task_id': async_result.id, 'status': 'queued'},
@@ -46,7 +46,7 @@ class MediaItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def engine(self, request):
-        """GET /api/media/items/engine/ — what the console is actually running.
+        """GET /api/media/items/engine/ - what the console is actually running.
 
         The module used to announce "detector not installed" as a flat fact.
         It now runs a real engine for part of the job and none at all for the
@@ -65,7 +65,7 @@ class MediaItemViewSet(viewsets.ModelViewSet):
                 'SHA-256 fingerprinting',
             ],
             'reported_not_scored': [
-                'Error level analysis (JPEG) — measured, shown, and kept out '
+                'Error level analysis (JPEG) - measured, shown, and kept out '
                 'of the verdict: on test composites it flagged untouched '
                 'images about as often as edited ones.',
             ],

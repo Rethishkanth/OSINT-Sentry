@@ -40,7 +40,7 @@ export default function Overview({ data, loading, error, onSelect }) {
                   className="metric"
                   style={{ color: online ? undefined : 'var(--text-dim)' }}
                 >
-                  {online ? (stats[m.primary] ?? 0) : '—'}
+                  {online ? (stats[m.primary] ?? 0) : '-'}
                 </div>
                 <div className="metric-label">{m.label}</div>
 

@@ -42,7 +42,7 @@ def check_credibility_gate(source) -> CredibilityScore | None:
     """Module 1 gate: every item clears credibility before it is stored.
 
     A source that has never been scored is scored inline rather than waved
-    through — otherwise the gate is trivially bypassed by ingesting fast.
+    through - otherwise the gate is trivially bypassed by ingesting fast.
     """
     threshold = _min_credibility()
     if threshold is None:
@@ -50,8 +50,8 @@ def check_credibility_gate(source) -> CredibilityScore | None:
 
     latest = source.credibility_scores.first()
     if latest is None:
-        # Cache the registry data first, or this first score — the one the gate
-        # acts on — is computed with the domain's age unknown. The lookup
+        # Cache the registry data first, or this first score - the one the gate
+        # acts on - is computed with the domain's age unknown. The lookup
         # short-circuits when the cache is already fresh.
         refresh_domain_registration.run(source.pk)
         score_id = score_source.run(source.pk)
@@ -207,7 +207,7 @@ def corroborate_item(content_item_id):
     """Cross-reference one stored article against other outlets.
 
     Returns the Corroboration id. The report is always written, including
-    when the search failed — a check that could not complete is a finding an
+    when the search failed - a check that could not complete is a finding an
     analyst needs to see, not one to hide.
     """
     from .corroborate import assess
@@ -307,7 +307,7 @@ def fetch_source(source_id, inline=False, force=False):
 
     The credibility gate is checked *before* any request goes out, not after.
     Letting ingest_item reject the items afterwards would mean a source we
-    have already decided not to trust still gets crawled every hour — we
+    have already decided not to trust still gets crawled every hour - we
     would be spending someone else's bandwidth to fetch documents we intend
     to throw away.
     """
@@ -351,7 +351,7 @@ def fetch_source(source_id, inline=False, force=False):
 
 
 def _no_items_detail(source) -> str:
-    """Say which kind of nothing happened — the three cases look identical."""
+    """Say which kind of nothing happened - the three cases look identical."""
     from .fetchers import FeedStatus
 
     return {
@@ -370,7 +370,7 @@ def fetch_url(url, inline=True):
     """Fetch one page by URL, registering its site as a Source if needed.
 
     This is the "paste a link" path. It goes through exactly the same gate,
-    robots check, and limits as a scheduled crawl — the only difference is
+    robots check, and limits as a scheduled crawl - the only difference is
     that a person asked for it.
     """
     from core.domains import InvalidDomain, normalize_domain
@@ -381,7 +381,7 @@ def fetch_url(url, inline=True):
         return {'error': str(exc)}
 
     # Check the host before creating anything. A URL we are never allowed to
-    # fetch should not leave a Source row behind — or trigger an RDAP lookup
+    # fetch should not leave a Source row behind - or trigger an RDAP lookup
     # and a credibility score for a site we will not read.
     try:
         assert_fetchable(url)

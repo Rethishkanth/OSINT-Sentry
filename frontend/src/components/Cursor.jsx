@@ -7,7 +7,7 @@ const HOT_SELECTOR = 'button, a, input, [role="tab"], .panel'
  * and full-viewport crosshairs.
  *
  * Position is written straight to the DOM in a rAF loop rather than held in
- * React state — mousemove fires far faster than a component should re-render.
+ * React state - mousemove fires far faster than a component should re-render.
  * The shared --mx/--my custom properties drive the background spotlight and
  * grid mask in CSS.
  */

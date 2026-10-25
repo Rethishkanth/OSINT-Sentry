@@ -1,7 +1,7 @@
 """Turning a set of located events into a report an analyst can hand over.
 
 A report here is a **document**, not a dump. The events are already available
-as JSON and as a map; what a report adds is the reading of them — how many,
+as JSON and as a map; what a report adds is the reading of them - how many,
 where, over what period, out of whose journalism, and how much of it is solid.
 
 Three decisions worth stating, because each of them is a road not taken:
@@ -24,7 +24,7 @@ matters. `gaps` is a first-class output, not a footnote.
 produce a fixed-layout copy of text would buy nothing an analyst needs: this
 output can be diffed against last week's, grepped, pasted into an email, and
 read in a terminal. `Report.pdf` stays on the model for an analyst's own
-export, attached by hand — it is not something this builder pretends to fill.
+export, attached by hand - it is not something this builder pretends to fill.
 
 Swapping the builder is a settings change, same as every other engine in this
 project: name a BaseReportBuilder subclass in REPORTGIS_REPORT_BUILDER.
@@ -67,7 +67,7 @@ BAND_MEANING = {
     ),
     GeoEvent.Confidence.LOW: (
         'A country or region was named, nothing narrower. The pin is a point '
-        'inside it, chosen to be on land — not the site of anything.'
+        'inside it, chosen to be on land - not the site of anything.'
     ),
 }
 
@@ -127,7 +127,7 @@ def verb(count: int, singular: str, many: str) -> str:
 def _country_name(value: str) -> str:
     """Accept 'LB' or 'Lebanon'; return the name a GeoEvent actually stores.
 
-    Events carry the country's name, not its code — that is what
+    Events carry the country's name, not its code - that is what
     reportgis.geocode writes into the row, and it is what an analyst typing a
     filter by hand will reach for. A code is accepted and translated anyway,
     because half the world writes AE and the other half writes United Arab
@@ -359,7 +359,7 @@ class NarrativeReportBuilder(BaseReportBuilder):
         Module 2 already answers this per article; the report's job is only to
         carry the answer forward rather than presenting geography as if the
         journalism underneath it were settled. Articles that were never
-        checked are counted separately from articles that checked out badly —
+        checked are counted separately from articles that checked out badly -
         collapsing those two into one average is how an unexamined story ends
         up looking average.
         """
@@ -559,7 +559,7 @@ class NarrativeReportBuilder(BaseReportBuilder):
         if undated:
             gaps.append(
                 f'{plural(undated, "event")} '
-                f'{verb(undated, "carries", "carry")} no date at all — in the '
+                f'{verb(undated, "carries", "carry")} no date at all - in the '
                 f'counts, and absent from the period above.'
             )
         if findings['period']['earliest']:
@@ -612,7 +612,7 @@ class NarrativeReportBuilder(BaseReportBuilder):
             '| --- | ---: | --- |',
         ]
         for row in findings['countries']:
-            places = ', '.join(row['places'][:8]) or '—'
+            places = ', '.join(row['places'][:8]) or '-'
             if len(row['places']) > 8:
                 places += f', +{len(row["places"]) - 8} more'
             out.append(f'| {row["name"]} | {row["events"]} | {places} |')
@@ -655,9 +655,9 @@ class NarrativeReportBuilder(BaseReportBuilder):
             '| --- | --- | --- | --- | ---: | --- |',
         ]
         for event in events:
-            title = (event.content_item.title if event.content_item else '') or '—'
+            title = (event.content_item.title if event.content_item else '') or '-'
             out.append(
-                f'| {event.place_name or "—"} '
+                f'| {event.place_name or "-"} '
                 f'| {event.latitude:.4f}, {event.longitude:.4f} '
                 f'| {event.get_confidence_display()} '
                 f'| {event.get_method_display()} '

@@ -52,8 +52,8 @@ def plural(count, singular, many=None):
 def reason(label: str, detail: str, effect: str) -> dict:
     """One line of a score's working.
 
-    `effect` names which number the line bears on — 'bot', 'coordination',
-    'sentiment', 'toxicity' — or 'limits' for a line that says what the
+    `effect` names which number the line bears on - 'bot', 'coordination',
+    'sentiment', 'toxicity' - or 'limits' for a line that says what the
     evidence cannot support. A social score is a ratio rather than a running
     total, so unlike Module 1 the effect is not a signed contribution: there
     is no column of numbers here that adds up to the answer.
@@ -276,7 +276,7 @@ class HeuristicGraphScorer(BaseGraphScorer):
                 'No peer shares its targets',
                 f'No other tracked account shares {self.min_shared_targets} or '
                 f'more of the {len(outgoing)} accounts this one interacts with. '
-                'Within this corpus it is not moving with anyone — a wider '
+                'Within this corpus it is not moving with anyone - a wider '
                 'capture could still show that it is.',
                 'coordination',
             ))
@@ -286,7 +286,7 @@ class HeuristicGraphScorer(BaseGraphScorer):
         reasons.append(reason(
             f'Shares {best_shared} of {len(outgoing)} targets with {peer.label}',
             f'Overlap of {best:.2f} against its closest peer. Accounts working '
-            'from one list look like this — and so do two reporters on the same '
+            'from one list look like this - and so do two reporters on the same '
             'beat, which is why this is a score and not a verdict.',
             'coordination',
         ))
@@ -308,7 +308,7 @@ class HeuristicTextScorer(BaseTextScorer):
 
     A lexicon can only report the words it holds. Where the older version
     returned 0.0 for a post containing none of them, this returns None for
-    sentiment and says the lexicon was silent — a post nobody could read as
+    sentiment and says the lexicon was silent - a post nobody could read as
     neutral ("they knew what was in the water and signed it off anyway")
     contains no listed word, and scoring it 0.0 put it beside a weather
     report.
@@ -373,7 +373,7 @@ class HeuristicTextScorer(BaseTextScorer):
         reasons.append(reason(
             f'{matched} sentiment {plural(matched, "term")} matched',
             '; '.join(parts) + '. The score is the balance between the two '
-            'counts — it reads vocabulary, not meaning, so irony and quotation '
+            'counts - it reads vocabulary, not meaning, so irony and quotation '
             'both come out the wrong way round.',
             'sentiment',
         ))

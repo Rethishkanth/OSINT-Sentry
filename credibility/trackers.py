@@ -5,7 +5,7 @@ able to read exactly why a site was flagged and disagree with it. Matching is
 on the registrable domain, so `securepubads.g.doubleclick.net` and
 `stats.g.doubleclick.net` both resolve to the doubleclick.net entry.
 
-This is not exhaustive and is not meant to be — it covers the networks common
+This is not exhaustive and is not meant to be - it covers the networks common
 enough that their absence says something. A site with none of these is not
 guaranteed clean; a site with ten of them is definitely monetised.
 """
@@ -13,7 +13,7 @@ guaranteed clean; a site with ten of them is definitely monetised.
 from __future__ import annotations
 
 # Serving advertising. Their presence is normal for commercial publishing and
-# is reported, not condemned — the penalty is small and grows with volume.
+# is reported, not condemned - the penalty is small and grows with volume.
 AD_NETWORKS = {
     'doubleclick.net': 'Google Ad Manager',
     'googlesyndication.com': 'Google AdSense',

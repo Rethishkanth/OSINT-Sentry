@@ -130,7 +130,7 @@ class Corroboration(TimeStampedModel):
     rationale = models.TextField(blank=True)
     # The score's working, one entry per component: {label, detail, effect},
     # where effect is that component's signed contribution out of 10. Stored
-    # structured rather than as prose so a rating can be audited — and so a
+    # structured rather than as prose so a rating can be audited - and so a
     # later engine version's reasoning can be compared against this one's.
     reasons = models.JSONField(default=list, blank=True)
     searched = models.CharField(max_length=255, blank=True)
@@ -140,7 +140,7 @@ class Corroboration(TimeStampedModel):
     # from a headline. Claims can only be checked against these.
     outlets_read = models.PositiveIntegerField(default=0)
 
-    # Checkable specifics the article states — figures, sums, dates — and how
+    # Checkable specifics the article states - figures, sums, dates - and how
     # they compared with what the outlets we read printed. See content.claims.
     claims = models.JSONField(default=list, blank=True)
     claims_checked = models.PositiveIntegerField(default=0)
@@ -220,8 +220,8 @@ class CorroborationMatch(models.Model):
 class FactCheckMatch(models.Model):
     """One published fact-check whose subject overlaps this article's.
 
-    Kept verbatim. `rating` is the publisher's own wording — "Pants on Fire",
-    "Four Pinocchios", "Altered photo" — and `verdict` is our coarse bucket for
+    Kept verbatim. `rating` is the publisher's own wording - "Pants on Fire",
+    "Four Pinocchios", "Altered photo" - and `verdict` is our coarse bucket for
     it, used only to decide which rows the console emphasises. The bucket is
     lossy and the words are not, so both are stored and both are displayed.
     """
@@ -237,7 +237,7 @@ class FactCheckMatch(models.Model):
     )
     publisher = models.CharField(max_length=255, blank=True)
     publisher_site = models.CharField(max_length=255, blank=True)
-    # The claim the fact-checker reviewed — which is not necessarily the claim
+    # The claim the fact-checker reviewed - which is not necessarily the claim
     # this article makes. That gap is what close_match below is about.
     claim = models.TextField(blank=True)
     claimant = models.CharField(max_length=255, blank=True)

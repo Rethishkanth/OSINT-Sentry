@@ -1,4 +1,4 @@
-"""Tests for Module 2 — the content fetcher.
+"""Tests for Module 2 - the content fetcher.
 
 Not one of these makes a network request. Everything that would touch the
 outside world is behind a single function, content.http.request, so the tests
@@ -793,7 +793,7 @@ class CorroborationTests(TestCase):
 
     def test_being_first_is_not_untrustworthy(self):
         # A well-rated outlet standing alone is uncorroborated, never
-        # "do not trust" — a scoop is not a lie.
+        # "do not trust" - a scoop is not a lie.
         result = self._assess(stub_search([]))
         self.assertEqual(result.verdict, corroborate.Verdict.UNCORROBORATED)
 
@@ -908,8 +908,8 @@ RUPEE_STORY = (
 class QueryBuildingTests(TestCase):
     """The regression that mattered: v1 searched for the page furniture.
 
-    Every article came back rated 3.1 — the source-credibility half of the
-    formula with corroboration contributing zero — because the query was built
+    Every article came back rated 3.1 - the source-credibility half of the
+    formula with corroboration contributing zero - because the query was built
     from whatever proper noun appeared most often anywhere on the page.
     """
 
@@ -1321,7 +1321,7 @@ class RatingBucketTests(SimpleTestCase):
             self.assertEqual(factcheck.FALSE, factcheck.normalise_rating(text), text)
 
     def test_mostly_false_is_not_read_as_false_by_accident(self):
-        # It lands in the same bucket, but via its own rule — the ordering
+        # It lands in the same bucket, but via its own rule - the ordering
         # matters for its mirror image below.
         self.assertEqual(factcheck.FALSE, factcheck.normalise_rating('Mostly False'))
 
@@ -1476,7 +1476,7 @@ def stub_fact_check(outcome):
 
 @override_settings(CONTENT_MIN_CREDIBILITY=None, CORROBORATION_DEEP_READS=0)
 class FactCheckInReportTests(TestCase):
-    """What the layer does to a report — which, for the number, is nothing."""
+    """What the layer does to a report - which, for the number, is nothing."""
 
     def setUp(self):
         self.source = Source.objects.create(domain='examplenews.com')

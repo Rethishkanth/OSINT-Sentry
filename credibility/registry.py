@@ -2,7 +2,7 @@
 
 RDAP is the registries' own JSON-over-HTTP successor to WHOIS: no API key, no
 scraping, no third-party dependency. It answers the one question the scorer
-most needs and previously faked — how old is this domain, actually.
+most needs and previously faked - how old is this domain, actually.
 
 Network I/O lives here and nowhere else. The scorer reads cached fields off
 Source, so scoring itself stays pure and fast enough to run inside a request.
@@ -165,7 +165,7 @@ class RdapClient(BaseRegistryClient):
             )
 
         # RDAP redirects to whichever registry owns the TLD, and those vary
-        # wildly in responsiveness — timeouts here are routinely transient.
+        # wildly in responsiveness - timeouts here are routinely transient.
         # One retry matters because the first score is the one the ingest gate
         # acts on, and a blind gate is worse than a slow one. NOT_FOUND is a
         # real answer, so it is never retried.
@@ -195,7 +195,7 @@ class RdapClient(BaseRegistryClient):
                     detail=f'{name}: registered {registered.date().isoformat()}',
                 )
 
-        # The record exists but withholds the date — common for ccTLDs and
+        # The record exists but withholds the date - common for ccTLDs and
         # GDPR-redacted registries. Distinct from "we could not reach anyone".
         return RegistrationInfo(
             registrar=registrar,

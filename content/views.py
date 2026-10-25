@@ -32,7 +32,7 @@ class ContentItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        """GET /api/content/summary/ — corpus-wide counts for the console.
+        """GET /api/content/summary/ - corpus-wide counts for the console.
 
         These are counted in the database, not by the console adding up the
         rows it happens to have. The list endpoint pages at 25 with no
@@ -73,7 +73,7 @@ class ContentItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def corroborate(self, request, pk=None):
-        """POST /api/content/{id}/corroborate/ — cross-reference this story.
+        """POST /api/content/{id}/corroborate/ - cross-reference this story.
 
         Runs inline: the caller is waiting on a rating, and a task id is not
         an answer. It makes outbound search requests, so a few seconds is
@@ -88,7 +88,7 @@ class ContentItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def analyze(self, request, pk=None):
-        """POST /api/content/{id}/analyze/ — re-run analysis on one item."""
+        """POST /api/content/{id}/analyze/ - re-run analysis on one item."""
         item = self.get_object()
         async_result = analyze_content.delay(item.pk)
         return Response(
@@ -118,7 +118,7 @@ def _error(message, code):
 
 @api_view(['POST'])
 def fetch(request):
-    """POST /api/content/fetch/ — read a link, or crawl a source's feed.
+    """POST /api/content/fetch/ - read a link, or crawl a source's feed.
 
     Runs inline rather than queueing, because the caller is a person who just
     pasted a link and needs to know whether it worked. It is slow by design:
@@ -171,7 +171,7 @@ def fetch(request):
 
 @api_view(['POST'])
 def ingest(request):
-    """POST /api/content/ingest/ — submit a document for gated ingestion.
+    """POST /api/content/ingest/ - submit a document for gated ingestion.
 
     Runs inline so the caller learns immediately whether the credibility gate
     accepted the item; a 409 means the source scored too low.

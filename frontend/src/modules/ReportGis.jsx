@@ -52,7 +52,7 @@ function fitTo(features) {
  * Pins landing on the same spot at the current zoom, collapsed into one.
  *
  * Without this, a city named in nine articles is nine circles stacked exactly
- * on top of each other, which reads as one — so the map would show less the
+ * on top of each other, which reads as one - so the map would show less the
  * more there was to show.
  */
 function cluster(features, view) {
@@ -83,7 +83,7 @@ function cluster(features, view) {
 /**
  * The event map: a compiled-in coastline, a graticule, and the pins.
  *
- * Equirectangular, which is wrong about area and right about coordinates —
+ * Equirectangular, which is wrong about area and right about coordinates -
  * the axes read the same as the numbers in the database. Nothing is measured
  * off the screen; every distance this module reports comes from a haversine
  * over the stored latitude and longitude.
@@ -431,8 +431,8 @@ const FIELD = {
  * Choose a set of events, then write a report about them.
  *
  * Counting before writing is deliberate. The backend refuses to produce a
- * report over an empty selection — a document headed with a scope and
- * containing nothing reads as "we looked and nothing happened" — and finding
+ * report over an empty selection - a document headed with a scope and
+ * containing nothing reads as "we looked and nothing happened" - and finding
  * that out from a red error after pressing the button is a worse way to learn
  * it than seeing the count first.
  */
@@ -715,7 +715,7 @@ export default function ReportGis() {
     <div className="scan-in">
       <div className="grid" style={{ marginBottom: 16 }}>
         <Panel title="Geo events" tag="MODULE 05">
-          <div className="metric">{totals?.events ?? '—'}</div>
+          <div className="metric">{totals?.events ?? '-'}</div>
           <div className="metric-label">
             Locations placed{totals ? ` · ${totals.countries} countries` : ''}
           </div>
@@ -767,7 +767,7 @@ export default function ReportGis() {
           <span>· a numbered pin is that many events on one spot</span>
         </div>
         <p className="mono-dim" style={{ fontSize: 11, marginTop: 10, marginBottom: 0 }}>
-          The coastline is an outline compiled into this console — schematic, no borders, no
+          The coastline is an outline compiled into this console - schematic, no borders, no
           tiles, and <b style={{ color: 'var(--yellow)' }}>nothing fetched from anywhere</b>,
           so no viewport leaves the machine. Distances are computed from the stored
           coordinates, never from the screen.
@@ -785,7 +785,7 @@ export default function ReportGis() {
           }}
         />
         <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', margin: '14px 0 0' }}>
-          A report is Markdown assembled from counted figures — nothing here writes prose
+          A report is Markdown assembled from counted figures - nothing here writes prose
           about what the events <i>mean</i>. Its longest section is{' '}
           <b style={{ color: 'var(--yellow)' }}>what the report cannot show</b>: the pins that
           are country-level only, the names found and refused, the articles nobody has
@@ -806,7 +806,7 @@ export default function ReportGis() {
         <EnginePanel />
         <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', marginBottom: 0 }}>
           This module reads place names out of text against a{' '}
-          <b style={{ color: 'var(--yellow)' }}>table compiled into the source</b> — no
+          <b style={{ color: 'var(--yellow)' }}>table compiled into the source</b> - no
           geocoding service, so no article's place names leave this machine. A name it
           cannot settle is listed as found and not placed rather than resolved to the
           likeliest candidate, because a pin on a map is read as a fact.
@@ -848,7 +848,7 @@ export default function ReportGis() {
                       </td>
                       <td className="mono-dim">{e.method}</td>
                       <td className="mono-dim">{e.mentions}</td>
-                      <td className="mono-dim">{e.content_title || '—'}</td>
+                      <td className="mono-dim">{e.content_title || '-'}</td>
                       <td>
                         <button
                           type="button"
@@ -965,7 +965,7 @@ export default function ReportGis() {
                         {r.gap_count}
                       </td>
                       <td className="mono-dim">
-                        {r.generated_at ? new Date(r.generated_at).toLocaleDateString() : '—'}
+                        {r.generated_at ? new Date(r.generated_at).toLocaleDateString() : '-'}
                       </td>
                       <td>
                         <button

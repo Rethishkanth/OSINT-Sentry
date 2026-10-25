@@ -75,7 +75,7 @@ function Working({ reasons, heading }) {
 
 /**
  * Force-free graph render: accounts on a circle, edges as chords.
- * Nodes light up as the pointer approaches — proximity is computed in SVG
+ * Nodes light up as the pointer approaches - proximity is computed in SVG
  * user units so it stays correct at any viewport size.
  *
  * An unscored account is drawn hollow. It used to be drawn green, because a
@@ -183,7 +183,7 @@ function GraphMap({ accounts, edges }) {
  *
  * The panel leads with the run, not the list. An empty campaign list and a
  * detector nobody has run look identical, and only one of them means there is
- * nothing there — so the latest pass, its notes, and what it declined to
+ * nothing there - so the latest pass, its notes, and what it declined to
  * report sit above the results rather than under them.
  */
 function Campaigns() {
@@ -223,7 +223,7 @@ function Campaigns() {
     <Panel title="Campaigns" tag="CLUSTER DETECTION">
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 150 }}>
-          <div className="metric">{pass ? campaigns.rows.length : '—'}</div>
+          <div className="metric">{pass ? campaigns.rows.length : '-'}</div>
           <div className="metric-label">Clusters on record</div>
           <button
             type="button"
@@ -242,7 +242,7 @@ function Campaigns() {
           {!pass ? (
             <div className="notice">
               <b>The detector has not been run.</b> Nothing below is a finding
-              yet — an empty list here means nobody has looked, which is not
+              yet - an empty list here means nobody has looked, which is not
               the same as nothing being there.
             </div>
           ) : (
@@ -293,7 +293,7 @@ function Campaigns() {
                       <td className="mono-dim">{c.shared_target_count}</td>
                       <td style={{ minWidth: 140 }}><ScoreCell value={c.cohesion} /></td>
                       <td className="mono-dim">
-                        {c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString() : '—'}
+                        {c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString() : '-'}
                         {missed ? ' · not in latest pass' : ''}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -327,7 +327,7 @@ function Campaigns() {
                               Accounts every member interacts with
                             </div>
                             <div className="mono-dim" style={{ marginTop: 6, fontSize: 12, lineHeight: 1.8 }}>
-                              {c.common_targets.map((t) => `@${t.handle}`).join(' · ') || '—'}
+                              {c.common_targets.map((t) => `@${t.handle}`).join(' · ') || '-'}
                             </div>
                             <div className="mono-dim" style={{ marginTop: 14, fontSize: 11 }}>
                               {c.detector_version}
@@ -388,11 +388,11 @@ export default function Social() {
     <div className="scan-in">
       <div className="grid" style={{ marginBottom: 16 }}>
         <Panel title="Accounts" tag="MODULE 03">
-          <div className="metric">{totals?.accounts ?? '—'}</div>
+          <div className="metric">{totals?.accounts ?? '-'}</div>
           <div className="metric-label">Tracked identities</div>
           <div className="sub-metrics">
-            <div><b>{totals?.edges ?? '—'}</b>Edges</div>
-            <div><b>{totals?.posts ?? '—'}</b>Posts</div>
+            <div><b>{totals?.edges ?? '-'}</b>Edges</div>
+            <div><b>{totals?.posts ?? '-'}</b>Posts</div>
           </div>
         </Panel>
 
@@ -401,7 +401,7 @@ export default function Social() {
             className="metric"
             style={{ color: totals?.flagged ? 'var(--magenta)' : undefined }}
           >
-            {totals?.flagged ?? '—'}
+            {totals?.flagged ?? '-'}
           </div>
           <div className="metric-label">Suspected automation</div>
           {/* Shown beside the flag count, not below the fold. An account the
@@ -412,7 +412,7 @@ export default function Social() {
             style={{ marginTop: 10, fontSize: 11, lineHeight: 1.6 }}
           >
             {unscored
-              ? `${unscored} account${unscored === 1 ? '' : 's'} carry no score — too `
+              ? `${unscored} account${unscored === 1 ? '' : 's'} carry no score - too `
                 + 'little graph to judge on, not a clean bill of health.'
               : 'Every tracked account has a score.'}
           </div>
@@ -458,7 +458,7 @@ export default function Social() {
                       <td className="mono-dim">{a.platform}</td>
                       <td style={{ minWidth: 150 }}><ScoreCell value={a.bot_likelihood} /></td>
                       <td style={{ minWidth: 150 }}><ScoreCell value={a.coordination_score} /></td>
-                      <td className="mono-dim">{a.graph_model_version || '—'}</td>
+                      <td className="mono-dim">{a.graph_model_version || '-'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button
                           type="button"

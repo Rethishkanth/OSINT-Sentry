@@ -1,4 +1,4 @@
-"""Tests for Module 1 — the site safety inspection.
+"""Tests for Module 1 - the site safety inspection.
 
 No network. The one function that fetches (`content.http.request`) and the one
 that opens a TLS socket (`inspection.inspect_certificate`) are replaced, and
@@ -301,7 +301,7 @@ class ClearSafetyLogTests(TestCase):
     """Clearing the safety log must not cost anything else.
 
     An analyst emptying a view is saying "I have read these", not "destroy the
-    evidence" — and certainly not "forget the site". So the rows are flagged
+    evidence" - and certainly not "forget the site". So the rows are flagged
     rather than deleted, and the source and its assessment log are untouched.
     """
 

@@ -45,7 +45,7 @@ class GeoEventAdmin(admin.ModelAdmin):
     def reasons_display(self, obj):
         reasons = obj.reasons or []
         if not reasons:
-            return '—'
+            return '-'
         return format_html(
             '<ul style="margin:0;padding-left:18px">{}</ul>',
             format_html_join(
@@ -73,7 +73,7 @@ class ExtractionRunAdmin(admin.ModelAdmin):
     def notes_display(self, obj):
         notes = obj.notes or []
         if not notes:
-            return 'None — every name found was resolved.'
+            return 'None - every name found was resolved.'
         return format_html(
             '<ul style="margin:0;padding-left:18px">{}</ul>',
             format_html_join('', '<li>{}</li>', ((n,) for n in notes)),
@@ -92,7 +92,7 @@ class ReportAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     # Written by reportgis.reporting from counted figures. Editing the prose
     # in the admin would leave a report whose sentences no longer match the
-    # findings printed beneath them — the regenerate action exists for this.
+    # findings printed beneath them - the regenerate action exists for this.
     readonly_fields = (
         'summary', 'document_display', 'gaps_display', 'findings',
         'scope', 'builder_version', 'generated_at',

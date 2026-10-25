@@ -3,7 +3,7 @@
 Wired up before the analysis modules start writing data, so there is no window
 where changes go unrecorded. Receivers are registered dynamically for every
 concrete model outside the exclusion list below, which means a new app is
-covered the moment it is added — no per-model bookkeeping to forget.
+covered the moment it is added - no per-model bookkeeping to forget.
 """
 
 import logging

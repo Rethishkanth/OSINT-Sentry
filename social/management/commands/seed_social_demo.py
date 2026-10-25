@@ -54,7 +54,7 @@ POSTS = [
     # Scores as toxic.
     (RING[1], 'Only an idiot would believe this pathetic hoax.'),
     # Scores nothing. Not one word is in the lexicon, and the post is plainly
-    # not neutral — this is the case the old scorer recorded as 0.00.
+    # not neutral - this is the case the old scorer recorded as 0.00.
     (f'{PREFIX}beat_writer_1',
      'They knew what was in the water in March and signed it off anyway.'),
     # Scores positive.

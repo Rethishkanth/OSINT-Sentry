@@ -55,7 +55,7 @@ class SocialAccount(TimeStampedModel):
 
 
 class InteractionEdge(TimeStampedModel):
-    """A directed interaction between two accounts — an edge in the social graph."""
+    """A directed interaction between two accounts - an edge in the social graph."""
 
     class EdgeType(models.TextChoices):
         MENTION = 'mention', 'Mention'
@@ -104,7 +104,7 @@ class SocialPost(TimeStampedModel):
     reshare_count = models.PositiveIntegerField(null=True, blank=True)
 
     # Written by social.tasks.score_post. Null sentiment means no word in the
-    # post was in the lexicon at all — which is not the same as the post being
+    # post was in the lexicon at all - which is not the same as the post being
     # even-handed, and must not be displayed as 0.00.
     sentiment = models.FloatField(
         null=True,
@@ -135,7 +135,7 @@ class Campaign(TimeStampedModel):
     """A cluster of accounts that all interact with the same set of others.
 
     Written by social.tasks.detect_campaigns; never edited here. The membership
-    *is* the identity — `fingerprint` hashes it — so re-running the detector
+    *is* the identity - `fingerprint` hashes it - so re-running the detector
     over an unchanged graph updates this row instead of stacking a second copy
     of it, and an account joining makes a genuinely different cluster.
 

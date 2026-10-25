@@ -80,20 +80,20 @@ function SiteSafety({ inspections, showCleared, onToggleCleared, onClear, cleari
         <b>This inspects what the site serves, not whether it is malicious.</b>{' '}
         Transport security, certificate, response headers, advertising,
         trackers and clutter. It is not a malware scanner, and it does not run
-        JavaScript — anything injected at runtime is not counted.
+        JavaScript - anything injected at runtime is not counted.
       </div>
 
       {confirming && !showCleared && (
         <div className="notice" style={{ marginBottom: 12 }}>
           <b>Clear the safety log?</b> The {inspections.rows.length} inspection(s)
-          below are hidden, not deleted — <b>Show cleared</b> reads them back.
+          below are hidden, not deleted - <b>Show cleared</b> reads them back.
           The sites stay tracked and keep every entry in the assessment log.
         </div>
       )}
 
       {showCleared && (
         <div className="notice" style={{ marginBottom: 12 }}>
-          <b>Cleared inspections.</b> Kept, not deleted — clearing hides the
+          <b>Cleared inspections.</b> Kept, not deleted - clearing hides the
           safety log and changes nothing else. Every site below is still a
           tracked source and still has its full assessment log.
         </div>
@@ -185,7 +185,7 @@ function SiteSafety({ inspections, showCleared, onToggleCleared, onClear, cleari
                           <ThirdParties findings={r.findings} />
 
                           <div className="mono-dim" style={{ marginTop: 12 }}>
-                            Checked {r.checked_url || '—'} · {r.engine_version}
+                            Checked {r.checked_url || '-'} · {r.engine_version}
                           </div>
                         </div>
                       </td>
@@ -213,7 +213,7 @@ function ThirdParties({ findings }) {
           <div className="mono-dim" style={{ fontSize: 12, marginTop: 4 }}>
             {cert.valid
               ? `${cert.issuer || 'issuer unknown'} · ${cert.protocol || ''} · expires in ${cert.days_remaining} days`
-              : `Invalid — ${cert.problem}`}
+              : `Invalid - ${cert.problem}`}
           </div>
         </>
       )}
@@ -226,7 +226,7 @@ function ThirdParties({ findings }) {
           <span
             key={p.domain}
             className="badge"
-            title={`${p.domain} — seen ${p.count}×`}
+            title={`${p.domain} - seen ${p.count}×`}
             style={{
               color: ['miners', 'intrusive_ads'].includes(p.category)
                 ? 'var(--magenta)'
@@ -255,7 +255,7 @@ const POLL_ATTEMPTS = 8
 /** Registration age, in the largest unit that stays readable. */
 function DomainAge({ days }) {
   if (days === null || days === undefined) {
-    return <span className="mono-dim" title="Registry lookup has not resolved">—</span>
+    return <span className="mono-dim" title="Registry lookup has not resolved">-</span>
   }
   const label = days >= 365 ? `${Math.floor(days / 365)}y` : `${days}d`
   // Under six months is the band the scorer penalises; make it visible.
@@ -272,7 +272,7 @@ function DomainAge({ days }) {
   )
 }
 
-/** Submit a website — a pasted article URL or a bare domain — for scoring. */
+/** Submit a website - a pasted article URL or a bare domain - for scoring. */
 function AddSource({ onResolved, onInspect }) {
   const [value, setValue] = useState('')
   const [state, setState] = useState({ phase: 'idle', message: null })
@@ -301,13 +301,13 @@ function AddSource({ onResolved, onInspect }) {
       if (row.registry_status) {
         onResolved()
         return row.domain_age_days === null
-          ? `${domain}: registry returned “${row.registry_status}” — scored with age unknown.`
+          ? `${domain}: registry returned “${row.registry_status}” - scored with age unknown.`
           : `${domain}: registered ${Math.floor(row.domain_age_days / 365)} years ago.`
       }
     }
-    // Not an error — the row exists, the answer just has not landed yet.
+    // Not an error - the row exists, the answer just has not landed yet.
     onResolved()
-    return `${domain} added. The registry lookup is still running — `
+    return `${domain} added. The registry lookup is still running - `
       + 'reload in a moment, or check the Celery worker is up.'
   }
 
@@ -327,7 +327,7 @@ function AddSource({ onResolved, onInspect }) {
       setState({ phase: 'working', message: `${result.detail} Inspecting the site…` })
 
       // Registration metadata and the safety inspection answer different
-      // halves of "check this website", and neither waits on the other — so
+      // halves of "check this website", and neither waits on the other - so
       // run them together rather than making the person sit through both in
       // turn. Without the inspection this panel scored a site and left the
       // safety log empty, which reads as the log being broken.
@@ -337,7 +337,7 @@ function AddSource({ onResolved, onInspect }) {
       ])
       if (!live.current) return
       // Both halves name the domain, which reads as a stutter once they are
-      // one sentence — the first mention is enough.
+      // one sentence - the first mention is enough.
       const prefix = `${result.domain}: `
       const tail = safety.startsWith(prefix) ? safety.slice(prefix.length) : safety
       setState({ phase: 'done', message: [registry, tail].filter(Boolean).join(' ') })
@@ -372,7 +372,7 @@ function AddSource({ onResolved, onInspect }) {
       </form>
 
       <div className="mono-dim" style={{ marginTop: 10 }}>
-        Paste a full link or a bare domain — it is reduced to the registrable
+        Paste a full link or a bare domain - it is reduced to the registrable
         domain, so a BBC article and news.bbc.co.uk both resolve to bbc.co.uk.
         The site is scored from its registration and inspected for safety in
         one go; both results land in the logs below.
@@ -439,12 +439,12 @@ export default function Credibility() {
       })
       // Leaving the archive view already refetches the live log. Calling
       // reload() as well would refetch the *cleared* path this render closed
-      // over, and whichever landed last would win — sometimes hiding the
+      // over, and whichever landed last would win - sometimes hiding the
       // inspection just asked for behind the archive it replaced.
       if (!wasCleared) await inspections.reload()
       const message = result.score === null
         ? `${result.source_domain}: ${result.rating_label}. ${result.summary}`
-        : `${result.source_domain}: ${result.score.toFixed(1)}/10 — ${result.rating_label}. ${result.summary}`
+        : `${result.source_domain}: ${result.score.toFixed(1)}/10 - ${result.rating_label}. ${result.summary}`
       if (announce) setNote(message)
       return message
     } catch (err) {
@@ -467,7 +467,7 @@ export default function Credibility() {
         body: JSON.stringify({ source: sourceId, wait: true }),
       })
       // Scoring also refreshes the cached registry data, so the sources table
-      // (domain age, registrar) is stale too — reload both.
+      // (domain age, registrar) is stale too - reload both.
       await Promise.all([scores.reload(), sources.reload()])
       setNote('Scoring complete.')
     } catch (err) {
@@ -496,7 +496,7 @@ export default function Credibility() {
         </Panel>
         <Panel title="Latest inspection" tag="SITE SAFETY">
           {/* While the cleared view is open the rows below are the archive,
-              not the live log — reporting one of them as "latest" would be
+              not the live log - reporting one of them as "latest" would be
               wrong. */}
           {inspections.rows.length && !showCleared ? (
             <>
@@ -513,7 +513,7 @@ export default function Credibility() {
             </>
           ) : (
             <>
-              <div className="metric">—</div>
+              <div className="metric">-</div>
               <div className="metric-label">
                 {showCleared ? 'Viewing cleared log' : 'No site inspected yet'}
               </div>
@@ -530,7 +530,7 @@ export default function Credibility() {
           <div className="metric-label">Domains with a real registration date</div>
           {unresolved.length > 0 && (
             <div className="mono-dim" style={{ marginTop: 12 }}>
-              {unresolved.length} unresolved — scored with age unknown, not as new
+              {unresolved.length} unresolved - scored with age unknown, not as new
             </div>
           )}
         </Panel>
@@ -556,8 +556,8 @@ export default function Credibility() {
       {note && <div className="notice" style={{ marginBottom: 16 }}>{note}</div>}
 
       <div className="notice" style={{ marginBottom: 16 }}>
-        <b>Registration metadata only.</b> Scores come from RDAP registry data —
-        domain age, registrar, TLD — which separates a domain created last week
+        <b>Registration metadata only.</b> Scores come from RDAP registry data -
+        domain age, registrar, TLD - which separates a domain created last week
         from one created in 1994. It carries no information about whether the
         content is accurate, so metadata alone is capped below the VERIFIED tier.
       </div>
@@ -615,7 +615,7 @@ export default function Credibility() {
                 {sources.rows.map((s) => (
                   <tr key={s.id}>
                     <td>{s.domain}</td>
-                    <td className="mono-dim">{s.publisher || '—'}</td>
+                    <td className="mono-dim">{s.publisher || '-'}</td>
                     <td><DomainAge days={s.domain_age_days} /></td>
                     <td title={s.registrar || 'Registrar unknown'}>
                       <Badge value={s.registry_status} />
@@ -623,7 +623,7 @@ export default function Credibility() {
                     <td style={{ minWidth: 140 }}>
                       <ScoreBar value={s.latest_credibility_score} max={100} />
                     </td>
-                    {/* Not a tier — reusing 'verified' here read as a trust
+                    {/* Not a tier - reusing 'verified' here read as a trust
                         claim next to the real tier column. */}
                     <td><Badge value={s.is_active ? 'active' : 'inactive'} /></td>
                     <td>

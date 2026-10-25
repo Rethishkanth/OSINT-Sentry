@@ -1,6 +1,6 @@
 """Looking inside a website, not just checking that it answers.
 
-Module 1's credibility score reads *registration metadata* — how old the
+Module 1's credibility score reads *registration metadata* - how old the
 domain is, who registered it. That says nothing about what the site actually
 serves. This does the other half: it fetches the homepage, reads the
 certificate, the response headers, and the markup, and rates out of 10 how
@@ -17,7 +17,7 @@ Those are facts about what the site chose to serve you.
 It is **not a malware scanner**. It does not detect exploit kits, phishing
 content, or a compromised page, and a clean 9/10 is not a guarantee of
 safety. It also **does not execute JavaScript**, so a site that injects its
-advertising at runtime through a tag manager will be undercounted — which is
+advertising at runtime through a tag manager will be undercounted - which is
 why the presence of a tag manager is itself reported.
 
 Unreachable is not unsafe. A site that will not answer gets no rating at all,
@@ -60,7 +60,7 @@ SECURITY_HEADERS = (
 #
 # Matched as whole tokens on container elements only, and deliberately
 # narrow. A first pass included "modal" and "overlay" as substrings and
-# reported 109 pop-ups on the Guardian's homepage — those words appear
+# reported 109 pop-ups on the Guardian's homepage - those words appear
 # throughout ordinary utility CSS, and a count that absurd discredits every
 # other number beside it. Bare "modal" and "overlay" are gone; the compounds
 # that survive only appear on something that actually interrupts you.
@@ -371,7 +371,7 @@ def _gather(domain: str) -> Findings:
             findings.http_redirects_to_https = plain.url.startswith('https://')
         except (Blocked, FetchError):
             # Refusing plaintext outright is a fine answer too, and better
-            # than serving it — so it is not recorded as a failure.
+            # than serving it - so it is not recorded as a failure.
             findings.http_redirects_to_https = True
 
     findings.reachable = True
@@ -454,7 +454,7 @@ def _rate(findings: Findings) -> SafetyResult:
             headline=RATING_LABELS[Rating.UNKNOWN],
             summary=(
                 f'The site did not answer, so nothing was inspected. '
-                f'({findings.unreachable_reason}) Unreachable is not unsafe — '
+                f'({findings.unreachable_reason}) Unreachable is not unsafe - '
                 'no rating is given rather than a bad one.'
             ),
             reasons=[],
@@ -476,7 +476,7 @@ def _rate(findings: Findings) -> SafetyResult:
 
     # -- transport ---------------------------------------------------------
     if not findings.https:
-        deduct(4.0, 'Serves plaintext HTTP only — anything sent to this site '
+        deduct(4.0, 'Serves plaintext HTTP only - anything sent to this site '
                     'is readable by anyone on the network')
     else:
         cert = findings.certificate
@@ -599,7 +599,7 @@ def _summarise(findings: Findings) -> str:
 
     caveat = (
         ' JavaScript is not executed, so anything injected at runtime is not '
-        'counted' + (' — and a tag manager is present, which usually loads more.'
+        'counted' + (' - and a tag manager is present, which usually loads more.'
                      if findings.tag_manager_present else '.')
     )
     return clutter + '.' + caveat

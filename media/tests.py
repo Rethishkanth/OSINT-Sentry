@@ -1,4 +1,4 @@
-"""Tests for Module 4 — media provenance and re-encoding forensics.
+"""Tests for Module 4 - media provenance and re-encoding forensics.
 
 No network and no fixtures on disk: every image is constructed in memory so
 each test states exactly which property it depends on.

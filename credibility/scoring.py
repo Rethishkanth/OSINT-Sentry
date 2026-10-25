@@ -4,7 +4,7 @@ The plan calls for a gradient-boosted-tree model over domain metadata combined
 with a BERT classifier over publisher text. Neither is trained yet, so the
 scorer is an interface with a deterministic heuristic default. Swap in the real
 model by pointing the CREDIBILITY_SCORER setting at another BaseScorer subclass
-— nothing that calls score() has to change.
+- nothing that calls score() has to change.
 
 What this scorer is and is not
 ------------------------------
@@ -149,8 +149,8 @@ class HeuristicScorer(BaseScorer):
         score = 50.0
         reasons = []
 
-        # HTTPS earns nothing. It is free, automatic, and universal — every
-        # phishing site has it — so its presence is not evidence of anything.
+        # HTTPS earns nothing. It is free, automatic, and universal - every
+        # phishing site has it - so its presence is not evidence of anything.
         # Its *absence* in 2026 is genuinely anomalous, so that still costs.
         # An unrecorded URL is neither: penalising a source for a scheme we
         # never observed would mark down every domain added without one.
@@ -206,7 +206,7 @@ class HeuristicScorer(BaseScorer):
         score = max(0.0, min(METADATA_SCORE_CEILING, score))
         rationale = (
             f'{self.model_version}: ' + '; '.join(reasons)
-            + f'. Registration metadata only — capped at {METADATA_SCORE_CEILING:.0f}, '
+            + f'. Registration metadata only - capped at {METADATA_SCORE_CEILING:.0f}, '
             'says nothing about whether the content is accurate.'
         )
         return ScoreResult(

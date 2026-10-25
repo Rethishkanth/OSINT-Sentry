@@ -7,7 +7,7 @@ article's place names to a third party, and it means the module stops working
 the moment the key expires or the rate limit bites.
 
 So this is a fixed table, compiled in, and it is honest about being one. It
-holds roughly 150 countries and 280 cities — capitals, the largest urban areas,
+holds roughly 150 countries and 280 cities - capitals, the largest urban areas,
 and the places that turn up in conflict and disaster reporting. That is a tiny
 fraction of the world's populated places. A name it does not hold is simply not
 found, which is the correct failure: the module says it found nothing rather
@@ -19,7 +19,7 @@ Two things this table does that a bigger one often does not:
 Birmingham is in England and in Alabama. Hyderabad is in India and in Pakistan.
 Cambridge, Athens, Alexandria, Naples, Valencia, Portland, London, Manchester,
 Córdoba, San Jose and Saint Petersburg all appear twice. These are not
-oversights to be cleaned up — they are the cases that decide whether the
+oversights to be cleaned up - they are the cases that decide whether the
 geocoder above it is trustworthy, so they are kept and tested.
 
 **Country coordinates are representative interior points, not centroids.** A
@@ -833,7 +833,7 @@ QUALIFIERS: dict[str, list[Place]] = {
 # This exists because of one sentence in a test run: "A large explosion was
 # heard in Tripoli on Monday evening, Libyan officials said." Every human
 # reader knows which Tripoli that is. The geocoder refused it, because the
-# literal string "Libya" never appears — and refusing a story that has told you
+# literal string "Libya" never appears - and refusing a story that has told you
 # the answer is not caution, it is a broken reader.
 #
 # These are used **only** to settle an already-ambiguous name. A demonym never

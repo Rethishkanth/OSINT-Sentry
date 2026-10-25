@@ -39,7 +39,7 @@ function ReasonRow({ reason }) {
         className="mono-dim"
         style={{ minWidth: 52, textAlign: 'right', color: tone, fontVariantNumeric: 'tabular-nums' }}
       >
-        {effect == null ? '—' : `${effect > 0 ? '+' : ''}${effect.toFixed(2)}`}
+        {effect == null ? '-' : `${effect > 0 ? '+' : ''}${effect.toFixed(2)}`}
       </span>
       <span style={{ fontSize: 12, lineHeight: 1.6 }}>
         <b style={{ color: 'var(--text)' }}>{label}.</b>{' '}
@@ -84,7 +84,7 @@ function ClaimTable({ claims }) {
 }
 
 // Published fact-checks. Only `false` and `mixed` get a warning colour, and
-// only on a close match — see FactChecks below for why that restraint matters.
+// only on a close match - see FactChecks below for why that restraint matters.
 const FACTCHECK_TONE = {
   false: 'var(--magenta)',
   mixed: 'var(--yellow)',
@@ -149,7 +149,7 @@ function FactChecks({ report }) {
               <tbody>
                 {[...close, ...loose].map((f) => (
                   <tr key={f.id} style={{ opacity: f.close_match ? 1 : 0.6 }}>
-                    <td className="mono-dim">{f.publisher || '—'}</td>
+                    <td className="mono-dim">{f.publisher || '-'}</td>
                     {/* Their words, not our bucket. "Pants on Fire" and
                         "Four Pinocchios" both bucket to false and both mean
                         something more specific than that. */}
@@ -203,7 +203,7 @@ function timeOf(iso) {
   }
 }
 
-/** The log of credibility checks. Newest at the top — that is the one you just ran. */
+/** The log of credibility checks. Newest at the top - that is the one you just ran. */
 function CredibilityChecks({ reports }) {
   const [openId, setOpenId] = useState(null)
 
@@ -211,7 +211,7 @@ function CredibilityChecks({ reports }) {
     <Panel title="Credibility checks" tag="NEWEST FIRST">
       <div className="notice" style={{ marginBottom: 12 }}>
         <b>This rates corroboration, not truth.</b> Each check searches a panel of
-        major newsrooms — registered here or not — plus GDELT&apos;s global index,
+        major newsrooms - registered here or not - plus GDELT&apos;s global index,
         then <b>reads the closest matches in full</b> and compares the figures,
         sums and dates this article states against what they printed. A widely
         repeated falsehood still corroborates well; a genuine scoop still does not.
@@ -246,7 +246,7 @@ function CredibilityChecks({ reports }) {
                     <td style={{ minWidth: 210 }}><Rating report={r} size={18} /></td>
                     <td className="mono-dim">
                       {r.verdict === 'unavailable'
-                        ? '—'
+                        ? '-'
                         : `${r.independent_sources} outlet(s), ${r.outlets_read ?? 0} read`}
                     </td>
                     <td className="mono-dim">
@@ -262,7 +262,7 @@ function CredibilityChecks({ reports }) {
                             )}
                           </>
                         )
-                        : '—'}
+                        : '-'}
                     </td>
                     {/* Never a bare zero. "0" and "nobody looked" are the
                         same glyph and not the same finding. */}
@@ -307,7 +307,7 @@ function CredibilityChecks({ reports }) {
                           </div>
 
                           <div className="metric-label">
-                            Why this rating{r.score != null && ` — the parts add up to ${r.score.toFixed(1)}`}
+                            Why this rating{r.score != null && ` - the parts add up to ${r.score.toFixed(1)}`}
                           </div>
                           <div style={{ margin: '10px 0 4px' }}>
                             {r.reasons?.length
@@ -326,7 +326,7 @@ function CredibilityChecks({ reports }) {
                                 Details checked against the other coverage
                               </div>
                               <div className="mono-dim" style={{ marginTop: 4, fontSize: 11 }}>
-                                Whether other outlets printed the same figures — not a ruling on
+                                Whether other outlets printed the same figures - not a ruling on
                                 which is right. A correction looks exactly like an error from outside.
                               </div>
                               <ClaimTable claims={r.claims} />
@@ -356,7 +356,7 @@ function CredibilityChecks({ reports }) {
                                         <td className="mono-dim">{m.domain}</td>
                                         <td>{Math.round(m.similarity * 100)}%</td>
                                         <td className="mono-dim">
-                                          {m.credibility != null ? m.credibility.toFixed(0) : '—'}
+                                          {m.credibility != null ? m.credibility.toFixed(0) : '-'}
                                         </td>
                                         <td style={{ maxWidth: 320 }}>
                                           <a href={m.url} target="_blank" rel="noreferrer noopener">
@@ -398,13 +398,13 @@ function Fetcher({ sources, onDone }) {
         body: JSON.stringify(body),
       })
       onDone(result.id ?? null)
-      // Reading a page also rates it, so lead with the rating — that is the
+      // Reading a page also rates it, so lead with the rating - that is the
       // question the person was actually asking.
       const report = result.corroboration
       const verdict = report
         ? (report.score === null || report.score === undefined
-          ? ` ${report.verdict_label} — ${report.rationale}`
-          : ` Rated ${report.score.toFixed(1)}/10 — ${report.verdict_label},`
+          ? ` ${report.verdict_label} - ${report.rationale}`
+          : ` Rated ${report.score.toFixed(1)}/10 - ${report.verdict_label},`
             + ` corroborated by ${report.independent_sources} other outlet(s)`
             + ` (${report.outlets_read ?? 0} read in full)`
             + (report.claims_checked
@@ -454,7 +454,7 @@ function Fetcher({ sources, onDone }) {
 
       <div className="mono-dim" style={{ marginTop: 10 }}>
         Registers the site as a source if it is new, scores it, checks
-        robots.txt, then reads the page. A few seconds is normal — requests to
+        robots.txt, then reads the page. A few seconds is normal - requests to
         one host are deliberately spaced out.
       </div>
 
@@ -476,7 +476,7 @@ function Fetcher({ sources, onDone }) {
                   <tr key={s.id}>
                     <td>{s.domain}</td>
                     <td className="mono-dim" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {s.feed_url || '—'}
+                      {s.feed_url || '-'}
                     </td>
                     <td><Badge value={s.feed_status} /></td>
                     <td>
@@ -518,7 +518,7 @@ export default function Content() {
   const [checkNote, setCheckNote] = useState(null)
   // Counted server-side. The list endpoint pages at 25 and takes no page-size
   // parameter, so headline panels built from the rows on screen report 25 on
-  // a corpus of any size above 25 — and look entirely plausible doing it.
+  // a corpus of any size above 25 - and look entirely plausible doing it.
   const [totals, setTotals] = useState(null)
 
   const loadTotals = useCallback(
@@ -540,7 +540,7 @@ export default function Content() {
       setCheckNote(
         report.score === null
           ? `${report.verdict_label}: ${report.rationale}`
-          : `${report.score.toFixed(1)}/10 — ${report.verdict_label}.`,
+          : `${report.score.toFixed(1)}/10 - ${report.verdict_label}.`,
       )
     } catch (err) {
       setCheckNote(err.message)
@@ -553,11 +553,11 @@ export default function Content() {
     <div className="scan-in">
       <div className="grid" style={{ marginBottom: 16 }}>
         <Panel title="Ingested" tag="MODULE 02">
-          <div className="metric">{totals ? totals.items : '—'}</div>
+          <div className="metric">{totals ? totals.items : '-'}</div>
           <div className="metric-label">Items past the credibility gate</div>
         </Panel>
         <Panel title="Analyzed" tag="NLP">
-          <div className="metric">{totals ? totals.analyzed : '—'}</div>
+          <div className="metric">{totals ? totals.analyzed : '-'}</div>
           <div className="metric-label">Entities and topics extracted</div>
         </Panel>
         {/* The figure that changes what an analyst does next. An article
@@ -565,11 +565,11 @@ export default function Content() {
             showing only how many checks came back well files it as one. */}
         <Panel title="Never checked" tag="CORROBORATION">
           <div className="metric" style={{ color: totals?.unchecked ? 'var(--yellow)' : undefined }}>
-            {totals ? totals.unchecked : '—'}
+            {totals ? totals.unchecked : '-'}
           </div>
           <div className="metric-label">
             {totals?.unchecked
-              ? 'Ingested but never cross-referenced — unexamined, not cleared'
+              ? 'Ingested but never cross-referenced - unexamined, not cleared'
               : 'Every ingested item has been cross-referenced'}
           </div>
         </Panel>
@@ -583,7 +583,7 @@ export default function Content() {
             </>
           ) : (
             <>
-              <div className="metric">—</div>
+              <div className="metric">-</div>
               <div className="metric-label">Nothing checked yet</div>
             </>
           )}
@@ -697,7 +697,7 @@ export default function Content() {
               </div>
 
               <div className="mono-dim" style={{ marginTop: 18 }}>
-                Analyzer: {selected.analyzer_version || '—'}
+                Analyzer: {selected.analyzer_version || '-'}
               </div>
             </div>
           )}

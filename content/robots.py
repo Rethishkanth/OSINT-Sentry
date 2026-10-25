@@ -91,7 +91,7 @@ def _load(robots_url: str) -> tuple[RobotFileParser, float | None, str]:
             parser.allow_all = True
             return parser, None, 'no robots.txt (4xx)'
         parser.disallow_all = True
-        return parser, None, f'unreadable ({message}) — treating as disallow-all'
+        return parser, None, f'unreadable ({message}) - treating as disallow-all'
 
     parser.parse(response.text().splitlines())
     delay = None

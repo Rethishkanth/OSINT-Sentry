@@ -7,7 +7,7 @@ class GeoEventSerializer(serializers.ModelSerializer):
     """Plain JSON. GeoJSON is a separate representation, see views.as_feature.
 
     This used to be a GeoFeatureModelSerializer from djangorestframework-gis,
-    which meant the list endpoint could only ever speak GeoJSON — convenient
+    which meant the list endpoint could only ever speak GeoJSON - convenient
     for a Leaflet layer and awkward for everything else, because the fields an
     analyst reads end up nested under "properties". The map now asks for
     GeoJSON explicitly at /events/geojson/ and everything else gets a flat

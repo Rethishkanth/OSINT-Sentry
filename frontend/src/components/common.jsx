@@ -1,13 +1,13 @@
 export function Badge({ value }) {
   if (value === null || value === undefined || value === '') {
-    return <span className="mono-dim">—</span>
+    return <span className="mono-dim">-</span>
   }
   return <span className={`badge ${String(value).toLowerCase()}`}>{value}</span>
 }
 
-/** 0–1 score as a bar. `risk` flips the colour ramp so high means bad. */
+/** 0-1 score as a bar. `risk` flips the colour ramp so high means bad. */
 export function ScoreBar({ value, max = 1, risk = false }) {
-  if (value === null || value === undefined) return <span className="mono-dim">—</span>
+  if (value === null || value === undefined) return <span className="mono-dim">-</span>
   const pct = Math.max(0, Math.min(100, (value / max) * 100))
   const tone = risk ? (pct >= 70 ? 'risk' : pct >= 40 ? 'warn' : '') : ''
   return (
@@ -32,7 +32,7 @@ export function TenPointRating({ score, label, tone = 'var(--text)', size = 22 }
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span style={{ fontSize: size, fontWeight: 700, color: tone, lineHeight: 1 }}>
-        {has ? score.toFixed(1) : '—'}
+        {has ? score.toFixed(1) : '-'}
         {has && <span style={{ fontSize: size * 0.5, color: 'var(--text-dim)' }}>/10</span>}
       </span>
       <span className="badge" style={{ color: tone, borderColor: tone }}>{label}</span>

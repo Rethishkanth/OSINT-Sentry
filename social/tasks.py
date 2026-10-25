@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def refresh_graph_scores():
     """Rebuild the interaction graph and rescore every account.
 
-    Loads ids only — the graph is what matters here, not the row contents —
+    Loads ids only - the graph is what matters here, not the row contents -
     and writes results back in one bulk update.
     """
     nodes = [
@@ -99,7 +99,7 @@ def detect_campaigns():
 
     Always writes a CampaignRun, including when it finds nothing. A campaign
     list is read as a list of what is out there, so the run that came back
-    empty has to be on the record beside it — otherwise "no campaigns" and
+    empty has to be on the record beside it - otherwise "no campaigns" and
     "nobody has looked" are the same screen.
 
     Clusters that were found before and are not found now are left in place
@@ -118,7 +118,7 @@ def detect_campaigns():
     # The run row is written first so that the clusters it found can be
     # stamped with its own timestamp. Stamping them with a separately-taken
     # now() puts them microseconds *before* the run, and every cluster then
-    # reads as one the latest pass failed to find again — which the console
+    # reads as one the latest pass failed to find again - which the console
     # duly reported, about clusters it had just that moment detected.
     run = CampaignRun.objects.create(
         campaigns_found=len(result.campaigns),

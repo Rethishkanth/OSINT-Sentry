@@ -47,7 +47,7 @@ MAX_RADIUS_KM = 20_000
 
 
 def as_feature(event: GeoEvent) -> dict:
-    """One GeoJSON Feature. Longitude first — that is the spec, not a choice."""
+    """One GeoJSON Feature. Longitude first - that is the spec, not a choice."""
     return {
         'type': 'Feature',
         'id': event.pk,
@@ -92,7 +92,7 @@ class GeoEventViewSet(viewsets.ModelViewSet):
             lat_text, lon_text = near.split(',')
             lat, lon = float(lat_text), float(lon_text)
         except ValueError:
-            # A malformed filter must not quietly become "no filter" — that
+            # A malformed filter must not quietly become "no filter" - that
             # would answer a spatial question with the whole table.
             return queryset.none()
 
@@ -138,7 +138,7 @@ class GeoEventViewSet(viewsets.ModelViewSet):
         """The module's headline counts, over everything rather than one page.
 
         The console used to derive these from the rows it had on screen, which
-        is the first page of a paginated list — so twenty-six placed locations
+        is the first page of a paginated list - so twenty-six placed locations
         displayed as twenty-five, and the number got quietly worse the more
         there was to count. A headline figure has to be counted in the
         database, not in the viewport.
@@ -194,7 +194,7 @@ class GeoEventViewSet(viewsets.ModelViewSet):
                 'largest candidate.',
             ],
             'not_available': [
-                'Any place the compiled table does not carry — it holds major '
+                'Any place the compiled table does not carry - it holds major '
                 'cities, not every populated place, and a miss is silence '
                 'rather than a near match.',
                 'Street-level geocoding (no address data, no geocoding service)',
@@ -264,14 +264,14 @@ class ReportViewSet(viewsets.ModelViewSet):
     """Reports, and the two ways of making one.
 
     An analyst either hands over a list of events they have chosen, or hands
-    over a scope — a country, a confidence floor, a date window, a radius —
+    over a scope - a country, a confidence floor, a date window, a radius -
     and lets the scope choose. The scope is stored either way, so the question
     the report answered is still on the record next month when the answer has
     changed.
     """
 
     # order_by is explicit because Meta.ordering is dropped on a queryset
-    # that groups — the annotate() below makes this one of those, and without
+    # that groups - the annotate() below makes this one of those, and without
     # it the paginator hands out pages in whatever order the DB felt like.
     queryset = Report.objects.prefetch_related('geo_events').annotate(
         _event_count=Count('geo_events')
@@ -396,7 +396,7 @@ class ReportViewSet(viewsets.ModelViewSet):
             )
         except EmptySelection as exc:
             # 400, not an empty 200. The caller asked for a document and is
-            # being told none can honestly be written — that is a refusal, and
+            # being told none can honestly be written - that is a refusal, and
             # it should read like one.
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

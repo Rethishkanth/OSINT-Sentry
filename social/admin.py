@@ -24,7 +24,7 @@ def _risk_badge(value, label):
         )
     color = '#c62828' if value >= 0.7 else '#b26a00' if value >= 0.4 else '#2e7d32'
     # format_html escapes each argument into a SafeString, so the number has to
-    # be formatted before it gets there — a '{:.2f}' spec would fail on a str.
+    # be formatted before it gets there - a '{:.2f}' spec would fail on a str.
     return format_html(
         '<span style="background:{};color:#fff;padding:2px 8px;'
         'border-radius:10px;font-weight:600">{} {}</span>',

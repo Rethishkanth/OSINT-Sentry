@@ -1,7 +1,7 @@
 """Pulling an article out of a web page, with the standard library.
 
 The plan calls for Scrapy spiders. Scrapy is a crawling framework, and what is
-actually needed here is one page turned into one document — html.parser does
+actually needed here is one page turned into one document - html.parser does
 that without adding a dependency, and the result is inspectable.
 
 This is readability-lite, not readability. It strips the furniture (script,
@@ -11,8 +11,8 @@ on a page that is mostly JavaScript, and there is no pretending otherwise: the
 extracted body is stored verbatim so an analyst can see what was actually read
 rather than trusting a summary of a bad extraction.
 
-Metadata is taken from the places publishers actually maintain — OpenGraph,
-JSON-LD, and the article:* meta tags — before falling back to <title>.
+Metadata is taken from the places publishers actually maintain - OpenGraph,
+JSON-LD, and the article:* meta tags - before falling back to <title>.
 """
 
 from __future__ import annotations
@@ -273,7 +273,7 @@ class _PageParser(HTMLParser):
             text = _clean(''.join(chunks))
             if len(text) >= MIN_BODY_CHARS:
                 return text
-        # Nothing cleared the bar — return whatever the page had rather than
+        # Nothing cleared the bar - return whatever the page had rather than
         # an empty body, so the analyst sees the page was thin, not missing.
         return _clean(''.join(self._body))
 

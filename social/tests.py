@@ -1,7 +1,7 @@
 """Tests for module 3.
 
 AbstentionTests is the important one. Both scorers here work by counting, and
-counting always produces a number — the question is whether the number is
+counting always produces a number - the question is whether the number is
 worth anything. An account that sent one mention nobody answered is 100%
 unreciprocated; a post with no lexicon word in it balances to zero. Both come
 out looking like findings. These tests check that neither is recorded as one.
@@ -314,7 +314,7 @@ class ApiTests(TestCase):
 
 
 class CampaignDetectionTests(TestCase):
-    """What the detector groups, and — mostly — what it refuses to group."""
+    """What the detector groups, and - mostly - what it refuses to group."""
 
     def test_a_ring_hitting_the_same_targets_is_found(self):
         edges = [(a, t) for a in (1, 2, 3) for t in (7, 8, 9)]

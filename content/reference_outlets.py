@@ -5,7 +5,7 @@ Why this exists
 Corroboration used to be able to see two things: articles this system had
 already ingested, and the feeds of outlets someone had explicitly added as a
 Source. On a fresh install that is one or two outlets, so almost every story
-came back "no other outlet carried this" — which the scorer honestly reported
+came back "no other outlet carried this" - which the scorer honestly reported
 and which was nonetheless useless, because nobody had looked anywhere.
 
 So this list is consulted regardless of whether a domain is a tracked Source.
@@ -62,7 +62,7 @@ BY_DOMAIN = {domain: (url, label) for domain, url, label in REFERENCE_FEEDS}
 
 
 def feeds_excluding(*domains: str) -> list[tuple[str, str, str]]:
-    """The panel minus the outlets given — normally the article's own site.
+    """The panel minus the outlets given - normally the article's own site.
 
     An outlet quoting itself is not a second opinion.
     """
