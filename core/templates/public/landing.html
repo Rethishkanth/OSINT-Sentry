@@ -1,0 +1,162 @@
+{% extends "public/base.html" %}
+
+{% block title %}OSINT-Sentry{% endblock %}
+{% block description %}A self-hosted OSINT analysis platform for source credibility, content corroboration, social graph analysis, image forensics and geolocation. It records what it cannot establish instead of guessing.{% endblock %}
+
+{% block content %}
+
+<h1>An OSINT platform that records what it could not establish.</h1>
+
+<p class="lede">
+  OSINT-Sentry rates news sources, cross-references stories against other
+  outlets, looks for accounts acting together, checks whether an image has
+  been altered, and puts located events on a map. Every one of those steps can
+  return no answer, and when it does it says which assumption failed.
+</p>
+
+<div class="cta">
+  <a class="btn" href="https://github.com/Rethishkanth/OSINT-Sentry">Read the source</a>
+  <a class="btn secondary" href="/api/">Browse the API</a>
+</div>
+
+<div class="rule">
+  The rule the whole system is built around:<br>
+  <b>No rating is given rather than a bad one.</b>
+</div>
+
+<p>
+  A dashboard cannot tell the difference between a zero and nobody having
+  looked. They are the same glyph on screen, and treating them the same way is
+  how an analyst ends up confident about something nothing ever checked. So
+  every engine here is allowed to decline, and a declined answer is stored and
+  displayed as its own kind of result, with the reason attached.
+</p>
+
+<h2>What the five modules do</h2>
+
+<div class="modules">
+  <div class="module">
+    <h3>01 Source credibility</h3>
+    <p>
+      Reads real domain registration data over RDAP and inspects the live site
+      for trackers, ad load and transport security. Scores are capped below the
+      top tier on purpose: clean registration metadata is not evidence that a
+      publisher is accurate.
+    </p>
+  </div>
+  <div class="module">
+    <h3>02 Content analysis</h3>
+    <p>
+      Fetches pages, obeying robots.txt without exception, then extracts
+      entities and topics and cross-references the story against other
+      newsrooms. Published fact-checks are cited next to the rating but never
+      move it.
+    </p>
+  </div>
+  <div class="module">
+    <h3>03 Social graph</h3>
+    <p>
+      Scores accounts on reciprocity and shared-target overlap and groups those
+      that consistently hit the same targets. Below a minimum amount of graph
+      it records no score, because one unanswered mention is not evidence of
+      automation.
+    </p>
+  </div>
+  <div class="module">
+    <h3>04 Media forensics</h3>
+    <p>
+      Error level analysis, JPEG quantisation tables and metadata, on Pillow
+      alone. Where an image's compression history makes error level analysis
+      meaningless, it reports which assumption failed instead of producing a
+      number that would look persuasive and mean nothing.
+    </p>
+  </div>
+  <div class="module">
+    <h3>05 Geolocation and reporting</h3>
+    <p>
+      Resolves place names against a gazetteer compiled into the source, so no
+      place name is ever sent to a third party. Reports are assembled from
+      counted figures, and each one carries a section listing what it cannot
+      show.
+    </p>
+  </div>
+  <div class="module">
+    <h3>Audit trail</h3>
+    <p>
+      Every model write outside the excluded apps is recorded with the acting
+      user, their IP and a field-level difference, so any number on screen can
+      be traced back to the write that produced it.
+    </p>
+  </div>
+</div>
+
+<h2>What it needs to run</h2>
+
+<div class="facts">
+  <div class="fact"><b>0</b><span>API keys required</span></div>
+  <div class="fact"><b>349</b><span>automated tests</span></div>
+  <div class="fact"><b>5</b><span>analysis modules</span></div>
+</div>
+
+<p>
+  Python and Node, and nothing else. The database is SQLite, the task queue
+  uses a filesystem transport, geolocation resolves against a table in the
+  source tree and image forensics needs only Pillow. There is no Docker
+  requirement, no PostGIS, no Redis and no paid service. One optional feature,
+  the published fact-check lookup, takes an API key you supply yourself; left
+  out, it reports itself as switched off rather than failing.
+</p>
+
+<h2>What it does not do</h2>
+
+<p>
+  This is the part most tools leave out, so it is stated plainly.
+</p>
+
+<table>
+  <tr><th>Claim not made</th><th>Why</th></tr>
+  <tr>
+    <td>It does not determine whether a story is true.</td>
+    <td>It measures corroboration, provenance and registration data. None of
+      those are truth, and a story every outlet got wrong corroborates well.</td>
+  </tr>
+  <tr>
+    <td>Most engines are heuristics, not trained models.</td>
+    <td>They are hand-written rules with published weights. The console labels
+      the engine version on every record so heuristic output is never mistaken
+      for a model's.</td>
+  </tr>
+  <tr>
+    <td>The one trained model reproduces a third party's ratings.</td>
+    <td>The credibility model learns from Media Bias/Fact Check factual
+      reporting ratings, which are one organisation's editorial judgement
+      rather than ground truth. Its output says so every time.</td>
+  </tr>
+  <tr>
+    <td>It does not detect deepfakes.</td>
+    <td>Image forensics covers recompression and metadata. Synthetic video
+      detection is not implemented and is not claimed.</td>
+  </tr>
+  <tr>
+    <td>A detected cluster is not proof of coordination.</td>
+    <td>A press pack on one beat and a paid amplification network look
+      identical from the graph. Every cluster carries that caveat.</td>
+  </tr>
+</table>
+
+<h2>Built with</h2>
+
+<p>
+  Django 5.2 and Django REST Framework on the backend, React 19 and Vite for
+  the analyst console, Celery for scheduled work, and scikit-learn with
+  LightGBM for the trained credibility model. The machine learning
+  dependencies are optional and are not installed by default, so a fresh
+  checkout brings all five modules up without them.
+</p>
+
+<div class="cta">
+  <a class="btn" href="https://github.com/Rethishkanth/OSINT-Sentry">Source and setup instructions</a>
+  <a class="btn secondary" href="/privacy/">Privacy policy</a>
+</div>
+
+{% endblock %}

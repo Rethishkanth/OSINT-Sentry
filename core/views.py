@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -215,3 +216,25 @@ def overview(request):
         'modules': modules,
         'audit_entries': AuditLogEntry.objects.count(),
     })
+
+
+# -- public pages ---------------------------------------------------------
+#
+# Served by Django rather than added to the React app, which has no router
+# and is the login-gated console. These two pages are the only part of the
+# system a person can read without an account, so they stay plain HTML with
+# no build step, no JavaScript and nothing loaded from another domain.
+
+# The date the policy text last changed. Deliberately a constant rather than
+# the current date: a policy that claims to have been updated today every
+# time it is rendered is telling the reader something false.
+PRIVACY_LAST_UPDATED = '25 October 2026'
+
+
+def landing(request):
+    return render(request, 'public/landing.html')
+
+
+def privacy(request):
+    return render(request, 'public/privacy.html',
+                  {'last_updated': PRIVACY_LAST_UPDATED})

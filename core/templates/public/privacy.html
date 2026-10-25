@@ -1,0 +1,165 @@
+{% extends "public/base.html" %}
+
+{% block title %}Privacy policy | OSINT-Sentry{% endblock %}
+{% block description %}What OSINT-Sentry stores, what it sends out, and who is responsible for it.{% endblock %}
+
+{% block content %}
+
+<h1>Privacy policy</h1>
+
+<p class="lede">
+  OSINT-Sentry is self-hosted software. Whoever runs this installation holds
+  the data and is responsible for it. This page describes what the software
+  stores and what it sends out, so that an operator can say the same to the
+  people they answer to.
+</p>
+
+<p><b>Last updated:</b> {{ last_updated }}</p>
+
+<h2>This page</h2>
+
+<p>
+  There is no analytics, no tracking pixel, no advertising network and no
+  third-party script on this page or on the analyst console. Nothing is loaded
+  from an external domain. No cookie is set by visiting this page.
+</p>
+
+<h2>What the software stores</h2>
+
+<table>
+  <tr><th>Data</th><th>Where it comes from</th></tr>
+  <tr>
+    <td>User accounts: username, hashed password, group membership</td>
+    <td>Created by the operator. Passwords are stored as salted hashes and are
+      never recoverable in plain text.</td>
+  </tr>
+  <tr>
+    <td>Sources and their credibility records</td>
+    <td>Domains an analyst submits, plus registration data returned by the
+      public registry lookup described below.</td>
+  </tr>
+  <tr>
+    <td>Content items: article title, text, URL, extracted entities and topics</td>
+    <td>Pages an analyst asks the system to fetch, or documents they upload
+      directly.</td>
+  </tr>
+  <tr>
+    <td>Social accounts, posts and interaction edges</td>
+    <td>Data an operator loads. The bundled demo data is synthetic and every
+      row it writes is prefixed so it can be identified and removed.</td>
+  </tr>
+  <tr>
+    <td>Uploaded media and their forensic results</td>
+    <td>Files an analyst uploads. These are stored on the server's own disk.</td>
+  </tr>
+  <tr>
+    <td>Located events and generated reports</td>
+    <td>Derived from content items already stored.</td>
+  </tr>
+  <tr>
+    <td>Audit log: acting user, IP address, timestamp and a field-level record
+      of what changed</td>
+    <td>Written automatically on model changes, so that any figure shown can be
+      traced to the write that produced it.</td>
+  </tr>
+</table>
+
+<p>
+  The audit log records the IP address of the person making a change. That is
+  personal data in most jurisdictions. It exists so an operator can establish
+  who altered an assessment and when, and an operator who does not need that
+  should shorten their retention of it accordingly.
+</p>
+
+<h2>What the software sends out</h2>
+
+<p>
+  Outbound requests are limited to the following, and every one of them is
+  triggered by an analyst's action rather than running in the background
+  against data at rest.
+</p>
+
+<ul>
+  <li>
+    <b>Domain registration lookups.</b> The registrable domain of a source is
+    sent to a public RDAP service to retrieve its registration date,
+    registrar and status. The domain name is the only thing sent.
+  </li>
+  <li>
+    <b>Page fetches.</b> When an analyst asks for a URL to be read, the
+    software requests that page directly from the site hosting it. It checks
+    and obeys that site's robots.txt first, and identifies itself with a
+    configurable user agent.
+  </li>
+  <li>
+    <b>Corroboration searches.</b> Queries derived from an article's own terms
+    are sent to the configured search backend to find other coverage of the
+    same story.
+  </li>
+  <li>
+    <b>Published fact-check lookups.</b> Optional and off unless an operator
+    supplies an API key. When enabled, an article's search terms are sent to
+    the Google Fact Check Tools API. With no key configured, no request is
+    made at all.
+  </li>
+</ul>
+
+<p>
+  Place names are never sent anywhere. Geolocation resolves against a table
+  compiled into the software itself, which is why a name it does not hold is
+  reported as not found rather than looked up elsewhere.
+</p>
+
+<h2>Cookies and sessions</h2>
+
+<p>
+  The analyst console authenticates with a JSON Web Token held in the
+  browser's local storage for the console's own origin. It is sent only to
+  this installation's API and is not readable by any other site. Signing out
+  removes it.
+</p>
+
+<p>
+  The Django administration interface at <code>/admin/</code> uses a session
+  cookie and a CSRF cookie. Both are first-party and functional, and neither
+  is used for tracking.
+</p>
+
+<h2>Retention and deletion</h2>
+
+<p>
+  The software does not expire data on its own. Retention is the operator's
+  decision and is implemented through their own database policy. Records can
+  be deleted individually through the administration interface, and the site
+  safety log has an explicit clear action in the console.
+</p>
+
+<h2>Third parties</h2>
+
+<p>
+  No data is sold, shared for advertising, or sent to any analytics provider.
+  The outbound requests listed above reach the registry service, the sites an
+  analyst chooses to read, the configured search backend and, only if an
+  operator enables it, the fact-check API. Each of those parties has its own
+  privacy practices, which this project does not control.
+</p>
+
+<h2>The credibility model</h2>
+
+<p>
+  The optional trained scorer was built from a public dataset of domain-level
+  factual reporting ratings. It is trained on properties of domain names and
+  their registration records. No personal data was used to train it and it is
+  not applied to people.
+</p>
+
+<h2>Contact</h2>
+
+<p>
+  Enquiries about a particular installation go to whoever operates it, because
+  they hold the data. Questions about the software itself belong on the
+  <a href="https://github.com/Rethishkanth/OSINT-Sentry">project's issue
+  tracker</a>.
+</p>
+
+{% endblock %}
