@@ -28,3 +28,6 @@ credibility/data/
 # in rgcn.metrics.json and are ignored for the same reason.
 social/artifacts/rgcn.pt
 social/artifacts/rgcn.metrics.json
+
+# Local editor and tooling configuration
+.claude/
