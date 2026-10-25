@@ -34,25 +34,28 @@ one it gets wrong.
 ## The ML seam
 
 The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
-analysis, and an RGCN plus RoBERTa for social graph work. **Two of them are
-measured and shipped: the credibility GBT and the content analyzer's BERT.**
-The rest are abstract base classes with dependency-free heuristic
-implementations behind them, so the pipeline - tasks, gating, signals,
-endpoints, admin - is real and testable today.
+analysis, and an RGCN plus RoBERTa for social graph work. **Three of them are
+measured and shipped: the credibility GBT, the content analyzer's BERT, and
+the social module's RoBERTa pair.** The RGCN is built and trainable but
+ships with no weights, for a reason given below that is about the datasets
+rather than the code. The rest are abstract base classes with dependency-free
+heuristic implementations behind them, so the pipeline - tasks, gating,
+signals, endpoints, admin - is real and testable today.
 
 A fresh clone installs `requirements.txt` alone and all five modules come up,
 because nothing in the running platform imports lightgbm or torch and no
 default setting points at a model file. The trained engines need
-`requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model)
-and [The trained content analyzer](#the-trained-content-analyzer).
+`requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model),
+[The trained content analyzer](#the-trained-content-analyzer) and
+[The trained social engines](#the-trained-social-engines).
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
 | `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT - **GBT trained, see below**; no BERT |
 | `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG - **BERT NER trained and measured, see below**; no BERTopic, no RAG |
 | `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | **real** feed-first fetcher over `urllib` | Scrapy spiders |
-| `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) |
-| `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa |
+| `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) - **built and trainable, ships with no weights, see below** |
+| `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa - **trained and measured, see below** |
 | `SOCIAL_CAMPAIGN_DETECTOR` | `social.campaigns.BaseCampaignDetector` | shared-target overlap + connected components with a common core | graph clustering |
 | `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** ELA, JPEG quantisation, metadata - declining where ELA is meaningless | ViT deepfake detection |
 | `REPORTGIS_GEOCODER` | `reportgis.geocode.BaseGeocoder` | **real** gazetteer compiled into the source; no service, no key | Nominatim / commercial geocoder |
@@ -243,13 +246,13 @@ removed rather than a name for a topic.
 ```
 pip install -r requirements-ml.txt
 pip install torch --index-url https://download.pytorch.org/whl/cpu
-python manage.py fetch_content_models
+python manage.py fetch_models --module content
 ```
 
 Then set `CONTENT_ANALYZER=content.ml.TransformerAnalyzer`.
 
 The weights are about 450MB, downloaded on demand into `CONTENT_MODEL_CACHE`
-(`.model-cache/`, gitignored) and never committed. `fetch_content_models`
+(`.model-cache/`, gitignored) and never committed. `fetch_models`
 pulls them ahead of time so the first article analysed after a deploy is not
 the one that waits; `--check` reports whether they are already on disk without
 reaching the network. Loading is deferred to first use and memoised per
@@ -269,6 +272,167 @@ python manage.py evaluate_topics
 Both write to `content/artifacts/`. Both are measurements rather than
 training: these two models are published fine-tuned weights, and nothing here
 fits them further.
+
+## The trained social engines
+
+Module 3 asks two questions, and the plan names a model for each: RoBERTa for
+what a post says, an RGCN for how an account behaves. The text half shipped.
+The graph half is built, trainable and tested, and ships with no weights.
+
+That asymmetry is the honest part of this section, so it comes first.
+
+### The RGCN ships with no weights, and why
+
+A bot classifier has to be trained on accounts that somebody looked at and
+judged. The public labelled Twitter graphs - TwiBot-20 and the Cresci
+collections - are released under access agreements with their authors: you
+request them, you say what you will use them for, you agree to terms. Copies
+have been re-uploaded to places where no agreement is involved, and training
+on one of those would have been an afternoon's work.
+
+Doing that would route around the authors' terms rather than meet them, and
+"the file was easy to find" is not an argument that it was mine to use. So
+`social.ml.RgcnGraphScorer` is a complete relational graph network - five
+relations in both directions, basis decomposition, nineteen behavioural
+features, a confidence floor, an artifact format that records what it was
+fitted on - with nothing fitted into it.
+
+What it has instead is `SocialAccount.is_automated`, a nullable field an
+analyst sets in the admin on accounts they have actually reviewed, and
+`manage.py train_graph_model`, which trains on those labels and refuses to
+run below twelve of them with four of each class. That is the only labelled
+graph this project can honestly claim: yours.
+
+### What the text models are worth
+
+Two published fine-tuned RoBERTa models, measured on TweetEval's held-out
+test splits with `manage.py evaluate_text_scorer`. Numbers are in
+`social/artifacts/roberta_text.metrics.json`.
+
+| | sentiment | offensive |
+| --- | --- | --- |
+| split | `sentiment/test`, 12,284 posts | `offensive/test`, 860 posts |
+| accuracy | 0.7218 | 0.8593 at the 0.50 mark |
+| macro F1 | 0.7240 | 0.8155 |
+| ROC AUC | - | 0.9003 |
+| majority baseline | 0.4833 | 0.7209 |
+
+The offensive model's AUC is the figure that matters for it, because the
+stored field is the probability rather than a verdict: nothing in the
+platform thresholds it, so what counts is whether the ranking is
+informative, and 0.90 says it is. Its accuracy at 0.50 is printed for
+orientation and should not be read as a decision the system makes.
+
+Both numbers land where the model cards put them, which is the point of
+running the evaluation at all: it says the serving path is the path that was
+measured, rather than something adjacent to it that happens to also return
+numbers.
+
+### Why the sentiment floor is 0.70
+
+The sentiment model reads every post three ways. When its best reading is
+weak, that is the model declining, not the post being balanced - and a
+near-zero score stored for a post the model could not read is
+indistinguishable, downstream, from a near-zero score for a post it read as
+genuinely neutral.
+
+| floor | speaks on | right when it speaks |
+| --- | --- | --- |
+| 0.34 | 99.99% | 72.2% |
+| 0.50 | 96.0% | 73.2% |
+| 0.60 | 81.2% | 76.5% |
+| **0.70** | **64.8%** | **80.8%** |
+| 0.80 | 46.6% | 85.9% |
+| 0.90 | 21.7% | 92.0% |
+
+There is no knee in that curve: every step trades about sixteen points of
+coverage for about four of accuracy. So the line is not where the curve
+turns, it is where the stored numbers stop being wrong one time in four.
+0.70 is the first row above 80%. Below the floor the post is recorded with no
+sentiment and a rationale that says the model would not commit, and the
+console renders it as *not scored* rather than as zero.
+
+The graph model's floor is higher - 0.80 - for a reason that is not
+statistical. Calling an account automated is an accusation about a person.
+
+### What these models do not read
+
+Nothing in this module reads what an account says about itself. No display
+name, no biography, no avatar, no follower count on its own. Those are what
+an operator controls, and a classifier that reads them learns what a bot
+writes in its biography this year rather than how one behaves. The nineteen
+features in `social/features.py` are degree, reciprocity, repetition and
+per-relation counts - things an operator would have to change their
+behaviour to change.
+
+Two caveats the console repeats on every post it scores:
+
+**These are tweet models.** They were fine-tuned on short, informal, English
+posts, and a long post, a formal one, or one in another language is outside
+what they were trained on.
+
+**"Toxicity" is narrower than it sounds.** The offensive model predicts
+whether an annotator would mark a post offensive, which in TweetEval means
+open abuse and profanity. A polite smear scores low. A low number is the
+absence of the thing the model was taught to find, not the absence of malice.
+
+### Train and serve read one graph
+
+Module 1 shipped a scorer whose serving path built a different feature row
+than its training path, five of eight columns were wrong, every test passed
+because they compared the column *names*, and the model's coverage fell by a
+factor of seventeen without anything failing.
+
+Module 3 is built so that cannot happen quietly:
+
+- `social/features.py` holds the only definition of a feature row, and
+  imports nothing from Django.
+- `social/graphdata.py` holds the only reader of the account graph. The
+  scoring task, the campaign detector and the training command all call it.
+- The artifact records `feature_names` and `relations`, and loading one
+  whose lists disagree with the running code raises rather than adapts.
+- `social/test_ml.py` compares the two paths **by value**, both on a fixture
+  and on a graph read out of a real database.
+
+### Using them
+
+```
+pip install -r requirements-ml.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python manage.py fetch_models --module social
+```
+
+Then set `SOCIAL_TEXT_SCORER=social.ml.RobertaTextScorer`. The weights are
+about 1GB, downloaded into `CONTENT_MODEL_CACHE` (`.model-cache/`,
+gitignored) and never committed; `--check` reports whether they are on disk
+without reaching the network. Loading is deferred to first use and memoised
+per process, so Django starts normally on a machine with no weights.
+
+For the graph model, label accounts in the admin and then:
+
+```
+python manage.py train_graph_model
+```
+
+It prints the graph it read, the split it held out, the training curve, and
+a coverage table like the one above, then writes `social/artifacts/rgcn.pt`
+with its metrics beside it. Set `SOCIAL_GRAPH_SCORER=social.ml.RgcnGraphScorer`
+to serve it and `SOCIAL_GRAPH_MIN_CONFIDENCE` from that table.
+
+The command will warn, every run, while fewer than 120 accounts are
+labelled. That warning is not a nag about dataset size; it is the difference
+between a model and a note of what one analyst thought about forty accounts.
+
+### Rebuilding the measurements
+
+```
+python manage.py evaluate_text_scorer
+```
+
+Writes `social/artifacts/roberta_text.metrics.json`. It is a measurement,
+not training: both text models are published fine-tuned weights and nothing
+here fits them further. The sentiment split takes about seven minutes on a
+CPU.
 
 ## Module 1: is the site itself safe? - a second rating out of 10
 
@@ -713,6 +877,12 @@ record itself as counting 47 *officials*.
 profile text, no follower counts, no outside service. Two scorers and a
 detector, all abstaining.
 
+The trained engines for this module, what they were measured at, and why the
+graph model ships with no weights, are in
+[The trained social engines](#the-trained-social-engines). Everything below
+describes the pipeline they plug into, which runs the same way with the
+heuristics a fresh clone starts on.
+
 **Both scorers can decline.** They work by counting, and counting always
 produces a number; the question is whether the number is worth anything. One
 unanswered mention is 0% reciprocity and a bot likelihood of 1.00. Two accounts
@@ -721,6 +891,11 @@ containing no word from the lexicon balances to a sentiment of exactly 0.00 and
 files itself beside a weather report, whatever it actually said. All four of
 those now record **no score** and a reason saying why, below
 `SOCIAL_MIN_INTERACTIONS` and `SOCIAL_MIN_SHARED_TARGETS` (both 3).
+
+The trained engines decline on the same principle and from a measured floor
+rather than a counted one: the RoBERTa sentiment model stays silent below
+`SOCIAL_TEXT_MIN_CONFIDENCE` (0.70) and the graph network below
+`SOCIAL_GRAPH_MIN_CONFIDENCE` (0.80).
 
 The console draws an unscored account **hollow** in the graph and writes *"n
 accounts carry no score - too little graph to judge on, not a clean bill of

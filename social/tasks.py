@@ -4,15 +4,10 @@ from celery import shared_task
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
-from .analysis import AccountNode, get_graph_scorer, get_text_scorer
+from .analysis import get_graph_scorer, get_text_scorer
 from .campaigns import get_campaign_detector
-from .models import (
-    Campaign,
-    CampaignRun,
-    InteractionEdge,
-    SocialAccount,
-    SocialPost,
-)
+from .graphdata import load_graph
+from .models import Campaign, CampaignRun, SocialAccount, SocialPost
 
 logger = logging.getLogger(__name__)
 
@@ -21,23 +16,24 @@ logger = logging.getLogger(__name__)
 def refresh_graph_scores():
     """Rebuild the interaction graph and rescore every account.
 
-    Loads ids only - the graph is what matters here, not the row contents -
-    and writes results back in one bulk update.
+    Loads counts and dates rather than whole rows - the graph is what matters
+    here, and no scorer reads what an account says about itself - and writes
+    results back in one bulk update.
+
+    The edge type travels with each edge and three per-account counts travel
+    with each node. The heuristic scorer uses none of them; a relational
+    graph network cannot work without them, and reading the graph through
+    social.graphdata rather than here keeps this task and the model's
+    training command reading the same one.
     """
-    nodes = [
-        AccountNode(id=pk, handle=handle)
-        for pk, handle in SocialAccount.objects.values_list('pk', 'handle')
-    ]
+    nodes, edges = load_graph()
     if not nodes:
         return 0
 
-    edges = list(
-        InteractionEdge.objects.values_list('from_account_id', 'to_account_id')
-    )
+    now = timezone.now()
     scores = get_graph_scorer().score_graph(nodes, edges)
     by_id = {s.account_id: s for s in scores}
 
-    now = timezone.now()
     accounts = list(SocialAccount.objects.filter(pk__in=by_id))
     for account in accounts:
         result = by_id[account.pk]
@@ -105,14 +101,12 @@ def detect_campaigns():
     Clusters that were found before and are not found now are left in place
     with their old last_seen_at. Deleting them would quietly rewrite what the
     graph looked like last week.
+
+    Reads the graph through social.graphdata like every other pass over it.
+    The detector ignores the edge type that reading carries, but one reader
+    means one answer to "who is in this graph" across the whole module.
     """
-    nodes = [
-        AccountNode(id=pk, handle=handle)
-        for pk, handle in SocialAccount.objects.values_list('pk', 'handle')
-    ]
-    edges = list(
-        InteractionEdge.objects.values_list('from_account_id', 'to_account_id')
-    )
+    nodes, edges = load_graph()
     result = get_campaign_detector().detect(nodes, edges)
 
     # The run row is written first so that the clusters it found can be

@@ -16,7 +16,15 @@ control/
 # The MBFC dump is somebody else's editorial work and is not redistributed here.
 credibility/data/
 
-# Transformer weights, downloaded on demand by manage.py fetch_content_models.
+# Transformer weights, downloaded on demand by manage.py fetch_models.
 # Hundreds of megabytes of somebody else's published model; fetched, not
 # vendored, and never committed.
 .model-cache/
+
+# The graph model, trained by manage.py train_graph_model on whichever
+# accounts this installation has labelled. Unlike the credibility tree, it is
+# not one artifact everyone should share: it is fitted on one operator's
+# review decisions about one set of accounts. Its measurements sit beside it
+# in rgcn.metrics.json and are ignored for the same reason.
+social/artifacts/rgcn.pt
+social/artifacts/rgcn.metrics.json

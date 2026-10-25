@@ -20,6 +20,20 @@ class SocialAccount(TimeStampedModel):
     follower_count = models.PositiveIntegerField(null=True, blank=True)
     account_created_at = models.DateTimeField(null=True, blank=True)
 
+    # An analyst's judgement, not a model's. This is the only ground truth
+    # the graph model has: the labelled bot graphs the field trains on
+    # (TwiBot-20, Cresci-2017) are distributed under agreements with their
+    # authors, so what can be learned here is what somebody here has
+    # reviewed. Null is the common case and means nobody has looked, which
+    # is not the same as a verdict of 'human' and must not be stored as one.
+    is_automated = models.BooleanField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Reviewed by an analyst: true automated, false human, '
+                  'empty not reviewed.',
+    )
+
     # Written by social.tasks.refresh_graph_scores. Null means the graph held
     # too little to judge on, which is a different state from a low score and
     # is shown as such: no rating is given rather than a bad one.

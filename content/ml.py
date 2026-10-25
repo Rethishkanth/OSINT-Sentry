@@ -25,7 +25,7 @@ is worth stating plainly rather than burying:
   bad rating this platform declines to give.
 
 Both models are downloaded on demand, cached under CONTENT_MODEL_CACHE and
-never committed. `manage.py fetch_content_models` fetches them ahead of time.
+never committed. `manage.py fetch_models` fetches them ahead of time.
 Loading is deferred to first use and memoised per process, so importing this
 module costs nothing and Django starts without the weights on disk.
 """

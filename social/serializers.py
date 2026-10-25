@@ -24,6 +24,7 @@ class SocialAccountSerializer(serializers.ModelSerializer):
             'external_id',
             'follower_count',
             'account_created_at',
+            'is_automated',
             'bot_likelihood',
             'coordination_score',
             'reasons',

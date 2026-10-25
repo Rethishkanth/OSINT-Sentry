@@ -30,3 +30,14 @@ transformers==5.20.2
 sentence-transformers==6.2.0
 datasets==5.1.0
 seqeval==1.2.2
+
+# Module 3 (social) shares torch and transformers with Module 2 and adds the
+# relational graph network. PyTorch Geometric installs from PyPI on a CPU
+# build with no extra index and no compiler: the optional C++ extensions
+# (torch-scatter and friends) are not needed for RGCNConv, so they are not
+# listed and should not be installed to get this working.
+#
+# The text scorer needs nothing beyond transformers. torch-geometric is for
+# manage.py train_graph_model and social.ml.RgcnGraphScorer.
+
+torch-geometric==2.8.1

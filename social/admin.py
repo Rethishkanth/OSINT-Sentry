@@ -52,7 +52,7 @@ class SocialAccountAdmin(admin.ModelAdmin):
         'handle', 'platform', 'display_name', 'follower_count',
         'bot_badge', 'coordination_badge', 'scored_at',
     )
-    list_filter = ('platform', 'graph_model_version')
+    list_filter = ('platform', 'is_automated', 'graph_model_version')
     search_fields = ('handle', 'display_name', 'external_id')
     readonly_fields = (
         'bot_likelihood', 'coordination_score', 'reasons_text',

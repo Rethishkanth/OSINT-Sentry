@@ -287,7 +287,7 @@ CONTENT_ANALYZER = env('CONTENT_ANALYZER', default='content.pipeline.HeuristicAn
 # hundred megabytes of downloaded weights, and a platform that will not start
 # because a model file is missing is worse than one reading with regexes.
 # Point CONTENT_ANALYZER at content.ml.TransformerAnalyzer to turn it on,
-# after running: manage.py fetch_content_models
+# after running: manage.py fetch_models --module content
 CONTENT_MODEL_CACHE = env(
     'CONTENT_MODEL_CACHE', default=str(BASE_DIR / '.model-cache')
 )
@@ -345,6 +345,44 @@ CONTENT_ALLOW_PRIVATE_HOSTS = env.bool('CONTENT_ALLOW_PRIVATE_HOSTS', default=Fa
 # named here; the tasks that call it do not change.
 SOCIAL_GRAPH_SCORER = env('SOCIAL_GRAPH_SCORER', default='social.analysis.HeuristicGraphScorer')
 SOCIAL_TEXT_SCORER = env('SOCIAL_TEXT_SCORER', default='social.analysis.HeuristicTextScorer')
+
+# The trained text scorer, off by default for the same reason the others are:
+# it needs the optional ML dependencies and downloaded weights. Point
+# SOCIAL_TEXT_SCORER at social.ml.RobertaTextScorer to turn it on. The
+# weights share CONTENT_MODEL_CACHE; manage.py fetch_models --module social
+# pulls them.
+SOCIAL_SENTIMENT_MODEL = env(
+    'SOCIAL_SENTIMENT_MODEL',
+    default='cardiffnlp/twitter-roberta-base-sentiment-latest',
+)
+SOCIAL_OFFENSIVE_MODEL = env(
+    'SOCIAL_OFFENSIVE_MODEL',
+    default='cardiffnlp/twitter-roberta-base-offensive',
+)
+# The sentiment model reads every post three ways and reports a probability
+# for each. Below this, its best reading is not a reading: no sentiment is
+# recorded and the post says so. 0.70 comes from the coverage table
+# manage.py evaluate_text_scorer prints: on TweetEval's test split it leaves
+# the model speaking about 65% of posts and right about 81% of those, where
+# 0.60 would speak about 81% of them and be right about 77%. There is no
+# knee in that curve to find - the trade is roughly four points of accuracy
+# for sixteen of coverage at every step - so the line is drawn where the
+# stored numbers stop being wrong one time in four.
+SOCIAL_TEXT_MIN_CONFIDENCE = env.float('SOCIAL_TEXT_MIN_CONFIDENCE', default=0.70)
+
+# The graph model. social.ml.RgcnGraphScorer is a relational graph network,
+# and unlike the two above it ships with no weights: a bot classifier has to
+# be trained on accounts somebody labelled, and the public labelled graphs
+# are under access agreements with their authors. Mark accounts automated or
+# not in the admin and run manage.py train_graph_model, which writes here.
+SOCIAL_GRAPH_ARTIFACT = env(
+    'SOCIAL_GRAPH_ARTIFACT', default=str(BASE_DIR / 'social' / 'artifacts' / 'rgcn.pt')
+)
+# How sure the graph model has to be, either way, before a likelihood is
+# recorded. Higher than the text floor on purpose: calling an account
+# automated is an accusation about a person, and no number is better than a
+# wrong one. manage.py train_graph_model prints the table this comes from.
+SOCIAL_GRAPH_MIN_CONFIDENCE = env.float('SOCIAL_GRAPH_MIN_CONFIDENCE', default=0.80)
 # Floors, not tuning knobs. Below them the heuristic scorer records no score
 # and says why: one unanswered mention is 100% unreciprocated, which is
 # arithmetic rather than evidence of automation.

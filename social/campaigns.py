@@ -78,8 +78,10 @@ class BaseCampaignDetector(ABC):
         """Group `accounts` given `edges`.
 
         `accounts` is a sequence of AccountNode, `edges` a sequence of
-        (from_account_id, to_account_id). Returning no campaigns is a valid
-        answer; returning no campaigns *and no notes* is not.
+        (from_account_id, to_account_id), optionally carrying the edge type
+        as a third element, which this detector ignores. Returning no
+        campaigns is a valid answer; returning no campaigns *and no notes*
+        is not.
         """
 
 
@@ -120,7 +122,11 @@ class OverlapCampaignDetector(BaseCampaignDetector):
         by_id = {node.id: node for node in nodes}
 
         targets: dict[int, set[int]] = defaultdict(set)
-        for from_id, to_id in edges:
+        for edge in edges:
+            # Indexed rather than unpacked: an edge may carry its type as a
+            # third element for a model that distinguishes relations. This
+            # detector only asks who pointed at whom.
+            from_id, to_id = edge[0], edge[1]
             targets[from_id].add(to_id)
 
         eligible = sorted(

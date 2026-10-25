@@ -74,6 +74,16 @@ class AccountNode:
     id: int
     handle: str = ''
 
+    # Carried for a scorer that needs more than the shape of the graph. The
+    # heuristic below ignores all three; the R-GCN in social.ml builds its
+    # feature row out of them. They are counts and dates rather than profile
+    # text: a display name or a biography is what an operator writes about
+    # themselves, and a classifier reading those learns what a bot wrote in
+    # its biography the year the training set was collected.
+    follower_count: int | None = None
+    age_days: int | None = None
+    post_count: int = 0
+
     @property
     def label(self) -> str:
         return f'@{self.handle}' if self.handle else f'account {self.id}'
@@ -99,15 +109,23 @@ class TextScore:
 class BaseGraphScorer(ABC):
     """Contract for coordinated-behaviour detection over the account graph."""
 
+    # True on a scorer whose numbers come from fitted weights. The console
+    # reads it to say which figures came from a model; see
+    # core.views.engine_is_trained.
+    is_trained: bool = False
+
     model_version: str = 'base'
 
     @abstractmethod
     def score_graph(self, accounts, edges) -> list[GraphScore]:
         """Score every account given the full account and edge sets.
 
-        `accounts` is a sequence of AccountNode; `edges` a sequence of
-        (from_account_id, to_account_id) pairs. Returning a None score is a
-        valid answer and means the graph held too little to judge on.
+        `accounts` is a sequence of AccountNode. `edges` is a sequence of
+        (from_account_id, to_account_id) pairs, optionally carrying the edge
+        type as a third element: a scorer that does not distinguish a reply
+        from a follow reads the first two and ignores the rest. Returning a
+        None score is a valid answer and means the graph held too little to
+        judge on.
         """
 
 
@@ -152,7 +170,11 @@ class HeuristicGraphScorer(BaseGraphScorer):
         out_targets: dict[int, set[int]] = defaultdict(set)
         in_sources: dict[int, set[int]] = defaultdict(set)
 
-        for from_id, to_id in edges:
+        for edge in edges:
+            # Indexed rather than unpacked: an edge may carry its type as a
+            # third element for a scorer that distinguishes relations, and
+            # this one does not.
+            from_id, to_id = edge[0], edge[1]
             out_targets[from_id].add(to_id)
             in_sources[to_id].add(from_id)
 
@@ -297,6 +319,7 @@ class BaseTextScorer(ABC):
     """Contract for per-post sentiment and toxicity scoring."""
 
     model_version: str = 'base'
+    is_trained: bool = False
 
     @abstractmethod
     def score_text(self, text: str) -> TextScore:
