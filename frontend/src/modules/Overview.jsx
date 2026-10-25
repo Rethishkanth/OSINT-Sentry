@@ -13,6 +13,15 @@ export default function Overview({ data, loading, error, onSelect }) {
   if (error) return <div className="notice bad"><b>Uplink failed.</b> {error}</div>
   if (!data) return null
 
+  // Which engines are fitted models is the API's answer, not a guess from
+  // the class name: 'BlendedScorer' and 'GazetteerGeocoder' do not tell you
+  // apart by spelling. The notice below therefore describes the engines this
+  // installation is actually running.
+  const trained = MODULES
+    .map((m) => ({ name: m.name, engine: data.modules[m.key]?.model_version,
+                   trained: data.modules[m.key]?.trained }))
+    .filter((m) => m.trained)
+
   return (
     <div className="scan-in">
       <div className="grid" style={{ marginBottom: 16 }}>
@@ -47,7 +56,7 @@ export default function Overview({ data, loading, error, onSelect }) {
                 {online ? (
                   <div className="sub-metrics">
                     {Object.entries(stats)
-                      .filter(([k]) => !['online', 'reason', m.primary, 'model_version'].includes(k))
+                      .filter(([k]) => !['online', 'reason', m.primary, 'model_version', 'trained'].includes(k))
                       .slice(0, 3)
                       .map(([k, v]) => (
                         <div key={k}>
@@ -78,10 +87,25 @@ export default function Overview({ data, loading, error, onSelect }) {
 
       <Panel title="Engine notice" tag="READ THIS">
         <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', margin: 0 }}>
-          Scores shown across this console come from <b style={{ color: 'var(--yellow)' }}>heuristic
-          placeholder engines</b>, not trained models. Every record carries the engine
-          version that produced it, so placeholder output is never mistaken for a
-          model verdict. Swapping in a real model is a settings change.
+          {trained.length === 0 ? (
+            <>
+              Scores shown across this console come from{' '}
+              <b style={{ color: 'var(--yellow)' }}>heuristic engines</b>, not
+              trained models.
+            </>
+          ) : (
+            <>
+              <b style={{ color: 'var(--yellow)' }}>
+                {trained.map((m) => m.name).join(', ')}
+              </b>
+              {trained.length === 1 ? ' runs' : ' run'} a trained model
+              {trained.length === 1 ? '' : 's'} ({trained.map((m) => m.engine).join(', ')}).
+              The remaining modules run heuristic engines.
+            </>
+          )}{' '}
+          Every record carries the engine version that produced it, so the two
+          are never mixed up after the fact. Swapping an engine is a settings
+          change.
         </p>
       </Panel>
     </div>

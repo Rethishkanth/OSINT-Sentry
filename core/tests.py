@@ -131,3 +131,53 @@ class RepositoryConventionTests(SimpleTestCase):
                     offenders.append(f'{relative}: {marker}')
         self.assertEqual(offenders, [], 'AI authorship markers found:\n  '
                          + '\n  '.join(offenders))
+
+
+class EngineHonestyTests(TestCase):
+    """The overview tells an analyst which figures came from a fitted model.
+
+    That claim is derived from the configured class rather than from its
+    name, so these check the derivation rather than the wording.
+    """
+
+    def test_the_heuristic_default_is_not_reported_as_trained(self):
+        from core.views import engine_is_trained
+
+        self.assertFalse(engine_is_trained('credibility.scoring.HeuristicScorer'))
+
+    def test_a_fitted_scorer_reports_itself_as_trained(self):
+        from core.views import engine_is_trained
+
+        # Imports the class only; credibility.ml keeps lightgbm inside the
+        # call that needs it, so this works without the optional extras.
+        self.assertTrue(engine_is_trained('credibility.ml.BlendedScorer'))
+        self.assertTrue(engine_is_trained('credibility.ml.GradientBoostedScorer'))
+
+    def test_an_unimportable_setting_understates_rather_than_fails(self):
+        from core.views import engine_is_trained
+
+        self.assertFalse(engine_is_trained('nowhere.at.all.Scorer'))
+
+    def test_the_geocoder_is_real_but_is_not_a_trained_model(self):
+        """It resolves names against a compiled table. Honest, not fitted."""
+        from core.views import engine_is_trained
+
+        self.assertFalse(engine_is_trained('reportgis.geocode.GazetteerGeocoder'))
+
+    def test_overview_reports_the_flag_for_every_module(self):
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.create_user('analyst-engines', password='x')
+        self.client.force_login(user)
+
+        modules = self.client.get('/api/overview/').json()['modules']
+
+        self.assertEqual(sorted(modules), sorted(
+            ['credibility', 'content', 'social', 'media', 'reportgis']
+        ))
+        for name, stats in modules.items():
+            with self.subTest(module=name):
+                self.assertIn('trained', stats)
+                self.assertIsInstance(stats['trained'], bool)
+                # Every shipped default is a hand-written engine.
+                self.assertFalse(stats['trained'])

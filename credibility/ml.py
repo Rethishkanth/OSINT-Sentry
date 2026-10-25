@@ -108,6 +108,11 @@ def clear_cache() -> None:
 class _ModelMixin:
     """Shared loading and prediction, so the two scorers cannot drift."""
 
+    # Read by the overview endpoint. A console that tells an analyst which
+    # figures came from a fitted model should not be deciding that by
+    # pattern-matching a class name, so the class says so itself.
+    is_trained = True
+
     def __init__(self, artifact_path: str | Path | None = None):
         self.artifact = load_artifact(artifact_path)
         self.min_confidence = float(getattr(

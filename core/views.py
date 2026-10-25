@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.utils.module_loading import import_string
 from rest_framework import status, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -111,6 +112,28 @@ def api_root(request):
     })
 
 
+def engine_is_trained(setting_path: str) -> bool:
+    """Does the configured engine come from fitted weights?
+
+    Resolved from the class rather than guessed from its name, because
+    'BlendedScorer' and 'GazetteerGeocoder' are not distinguishable by
+    spelling and the console tells an analyst which figures came from a
+    model. A class that does not say is taken to be hand-written, which is
+    the safer way to be wrong: it understates rather than overclaims.
+
+    Importing the class is cheap. The ML module keeps its lightgbm import
+    inside the call that needs it, so this does not pull in the optional
+    dependencies.
+    """
+    try:
+        return bool(getattr(import_string(setting_path), 'is_trained', False))
+    except ImportError:
+        # A setting pointing at something unimportable is a real problem, but
+        # it is the scorer's problem to report, not a reason for the whole
+        # dashboard to fail.
+        return False
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health(request):
@@ -147,6 +170,7 @@ def overview(request):
             'scores': CredibilityScore.objects.count(),
             'sources': Source.objects.count(),
             'model_version': settings.CREDIBILITY_SCORER.rsplit('.', 1)[-1],
+            'trained': engine_is_trained(settings.CREDIBILITY_SCORER),
         },
         # Ordered for the same reason the social dict below is: the panel
         # renders three sub-metrics and drops the rest. `unchecked` - articles
@@ -169,6 +193,7 @@ def overview(request):
                 fact_check_status=Corroboration.FactCheckStatus.FOUND
             ).count(),
             'model_version': settings.CONTENT_ANALYZER.rsplit('.', 1)[-1],
+            'trained': engine_is_trained(settings.CONTENT_ANALYZER),
         },
         # Order matters here: the dashboard panel renders the first three
         # sub-metrics and drops the rest, so the figures that change what an
@@ -187,6 +212,7 @@ def overview(request):
             'edges': InteractionEdge.objects.count(),
             'posts': SocialPost.objects.count(),
             'model_version': settings.SOCIAL_GRAPH_SCORER.rsplit('.', 1)[-1],
+            'trained': engine_is_trained(settings.SOCIAL_GRAPH_SCORER),
         },
         'media': {
             'online': True,
@@ -199,6 +225,7 @@ def overview(request):
                 verdict=TamperingResult.Verdict.SUSPICIOUS
             ).count(),
             'model_version': settings.MEDIA_FORENSICS_ANALYZER.rsplit('.', 1)[-1],
+            'trained': engine_is_trained(settings.MEDIA_FORENSICS_ANALYZER),
         },
         'reportgis': {
             'online': True,
@@ -209,6 +236,7 @@ def overview(request):
             'articles_read': ExtractionRun.objects.values('content_item').distinct().count(),
             'reports': Report.objects.count(),
             'model_version': settings.REPORTGIS_GEOCODER.rsplit('.', 1)[-1],
+            'trained': engine_is_trained(settings.REPORTGIS_GEOCODER),
         },
     }
 

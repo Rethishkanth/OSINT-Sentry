@@ -137,6 +137,9 @@ class ScoreResult:
 
 
 class BaseScorer(ABC):
+    # Overridden to True by anything fitted to data. See credibility.ml.
+    is_trained = False
+
     """Contract every credibility model implements."""
 
     model_version: str = 'base'
