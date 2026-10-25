@@ -86,6 +86,10 @@ class BaseAnalyzer(ABC):
     """Contract for the content-analysis model stack."""
 
     analyzer_version: str = 'base'
+    # Overridden to True by an analyzer whose output comes from fitted
+    # weights. The console reads it to say which figures came from a model;
+    # see core.views.engine_is_trained.
+    is_trained: bool = False
 
     @abstractmethod
     def extract_entities(self, text: str) -> list[EntitySpan]:

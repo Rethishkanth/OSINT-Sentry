@@ -1,0 +1,67 @@
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "dataset": "fancyzhx/ag_news [test]",
+  "documents": 300,
+  "phrases": 7497,
+  "foreign_sampled": 11927,
+  "own_best_mean": 0.6082,
+  "own_fifth_mean": 0.4627,
+  "foreign_mean": 0.0522,
+  "configured_floor": 0.3,
+  "by_floor": [
+    {
+      "floor": 0.1,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 1.0,
+      "foreign_passes": 0.2286
+    },
+    {
+      "floor": 0.15,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 1.0,
+      "foreign_passes": 0.0911
+    },
+    {
+      "floor": 0.2,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 1.0,
+      "foreign_passes": 0.0347
+    },
+    {
+      "floor": 0.25,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 0.9967,
+      "foreign_passes": 0.0123
+    },
+    {
+      "floor": 0.3,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 0.99,
+      "foreign_passes": 0.0047
+    },
+    {
+      "floor": 0.35,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 0.9567,
+      "foreign_passes": 0.002
+    },
+    {
+      "floor": 0.4,
+      "own_best_passes": 1.0,
+      "own_fifth_passes": 0.8667,
+      "foreign_passes": 0.0006
+    },
+    {
+      "floor": 0.45,
+      "own_best_passes": 0.9933,
+      "own_fifth_passes": 0.6,
+      "foreign_passes": 0.0004
+    },
+    {
+      "floor": 0.5,
+      "own_best_passes": 0.9467,
+      "own_fifth_passes": 0.26,
+      "foreign_passes": 0.0001
+    }
+  ]
+}

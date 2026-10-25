@@ -1,0 +1,98 @@
+{
+  "model": "dslim/bert-base-NER",
+  "dataset": "eriktks/conll2003 [test]",
+  "sentences": 3453,
+  "gold_entities": 5648,
+  "seconds": 140.8,
+  "unfiltered": {
+    "floor": 0.0,
+    "precision": 0.9021,
+    "recall": 0.9182,
+    "f1": 0.9101,
+    "entities_kept": 5749,
+    "entities_correct": 5186
+  },
+  "by_floor": [
+    {
+      "floor": 0.5,
+      "precision": 0.9061,
+      "recall": 0.9171,
+      "f1": 0.9116,
+      "entities_kept": 5717,
+      "entities_correct": 5180
+    },
+    {
+      "floor": 0.6,
+      "precision": 0.9109,
+      "recall": 0.914,
+      "f1": 0.9124,
+      "entities_kept": 5667,
+      "entities_correct": 5162
+    },
+    {
+      "floor": 0.7,
+      "precision": 0.9162,
+      "recall": 0.9115,
+      "f1": 0.9138,
+      "entities_kept": 5619,
+      "entities_correct": 5148
+    },
+    {
+      "floor": 0.8,
+      "precision": 0.9241,
+      "recall": 0.9079,
+      "f1": 0.916,
+      "entities_kept": 5549,
+      "entities_correct": 5128
+    },
+    {
+      "floor": 0.85,
+      "precision": 0.9281,
+      "recall": 0.9047,
+      "f1": 0.9163,
+      "entities_kept": 5506,
+      "entities_correct": 5110
+    },
+    {
+      "floor": 0.9,
+      "precision": 0.9336,
+      "recall": 0.8993,
+      "f1": 0.9161,
+      "entities_kept": 5440,
+      "entities_correct": 5079
+    },
+    {
+      "floor": 0.95,
+      "precision": 0.941,
+      "recall": 0.8892,
+      "f1": 0.9143,
+      "entities_kept": 5337,
+      "entities_correct": 5022
+    },
+    {
+      "floor": 0.98,
+      "precision": 0.9487,
+      "recall": 0.8741,
+      "f1": 0.9099,
+      "entities_kept": 5204,
+      "entities_correct": 4937
+    },
+    {
+      "floor": 0.99,
+      "precision": 0.9542,
+      "recall": 0.8598,
+      "f1": 0.9045,
+      "entities_kept": 5089,
+      "entities_correct": 4856
+    }
+  ],
+  "configured_floor": 0.9,
+  "at_configured_floor": {
+    "floor": 0.9,
+    "precision": 0.9336,
+    "recall": 0.8993,
+    "f1": 0.9161,
+    "entities_kept": 5440,
+    "entities_correct": 5079
+  }
+}

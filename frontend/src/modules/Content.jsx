@@ -24,6 +24,20 @@ const CLAIM_TONE = {
   unverified: 'var(--text-dim)',
 }
 
+/** Bar width for one topic, as a percentage of the strongest topic shown.
+ *
+ * Relative rather than absolute because the weight means different things
+ * per analyzer: the heuristic reports a term's share of the document, which
+ * lands around 0.02, while the transformer reports a keyphrase's cosine
+ * similarity to it, which lands around 0.4. A fixed multiplier that suits
+ * one draws every bar empty or every bar full for the other.
+ */
+function topicBarWidth(weight, topics) {
+  const strongest = Math.max(...topics.map((t) => t.weight || 0))
+  if (!strongest) return 0
+  return Math.min(100, (weight / strongest) * 100)
+}
+
 /** One line of the score's working, with what it contributed out of 10. */
 function ReasonRow({ reason }) {
   const { label, detail, effect } = reason
@@ -669,6 +683,10 @@ export default function Content() {
                   selected.entities.map((e) => (
                     <span key={e.id} className="badge" style={{ color: 'var(--cyan)' }}>
                       {e.text} · {e.label} ×{e.mention_count}
+                      {/* Only a model puts a number here. The heuristic has
+                          nothing to say about how sure it is, and a blank is
+                          the honest rendering of that. */}
+                      {e.confidence == null ? '' : ` · ${Math.round(e.confidence * 100)}%`}
                     </span>
                   ))
                 ) : (
@@ -686,7 +704,7 @@ export default function Content() {
                     >
                       <span style={{ minWidth: 110, fontSize: 12 }}>{t.label}</span>
                       <span className="bar" style={{ flex: 1 }}>
-                        <i style={{ width: `${Math.min(100, t.weight * 400)}%` }} />
+                        <i style={{ width: `${topicBarWidth(t.weight, selected.topics)}%` }} />
                       </span>
                       <span className="mono-dim">{t.weight.toFixed(3)}</span>
                     </div>

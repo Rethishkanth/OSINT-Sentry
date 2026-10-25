@@ -23,28 +23,33 @@ fact-check lookup with no API key - each records *what it could not establish*
 rather than a zero. A zero and "nobody looked" are the same glyph on a
 dashboard and are not the same finding.
 
-The trained credibility model follows the same rule. It is right two times in
-three if forced to answer, so it is calibrated and allowed to decline instead:
-at its shipped floor it speaks about 11% of domains and is right 96.7% of the
-time when it does.
+Both trained models follow the same rule. The credibility model is right two
+times in three if forced to answer, so it is calibrated and allowed to decline
+instead: at its shipped floor it speaks about 11% of domains and is right
+96.7% of the time when it does. The content analyzer's entity model drops any
+name it is not confident about, trading 1.9 points of recall for 3.2 points of
+precision, because an entity the console leaves out costs an analyst less than
+one it gets wrong.
 
 ## The ML seam
 
 The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
-analysis, and an RGCN plus RoBERTa for social graph work. **One of them is
-trained and shipped: the credibility GBT.** The rest are abstract base classes
-with dependency-free heuristic implementations behind them, so the pipeline -
-tasks, gating, signals, endpoints, admin - is real and testable today.
+analysis, and an RGCN plus RoBERTa for social graph work. **Two of them are
+measured and shipped: the credibility GBT and the content analyzer's BERT.**
+The rest are abstract base classes with dependency-free heuristic
+implementations behind them, so the pipeline - tasks, gating, signals,
+endpoints, admin - is real and testable today.
 
 A fresh clone installs `requirements.txt` alone and all five modules come up,
-because nothing in the running platform imports lightgbm and no default setting
-points at a model file. Training or serving the GBT needs
-`requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model).
+because nothing in the running platform imports lightgbm or torch and no
+default setting points at a model file. The trained engines need
+`requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model)
+and [The trained content analyzer](#the-trained-content-analyzer).
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
 | `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT - **GBT trained, see below**; no BERT |
-| `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
+| `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG - **BERT NER trained and measured, see below**; no BERTopic, no RAG |
 | `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | **real** feed-first fetcher over `urllib` | Scrapy spiders |
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) |
 | `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa |
@@ -153,6 +158,117 @@ compared keys alone and passed while five of the eight registration columns
 were wrong at serving time: the shape was right and only the contents were
 blank. That bug cut the model's coverage from 23.8% to 1.4% without failing a
 single test.
+
+## The trained content analyzer
+
+Module 2's default analyzer finds entities with a regular expression that
+calls any two capitalised words a person. It calls Bayelsa State a person. The
+trained analyzer replaces it with `dslim/bert-base-NER`, a BERT fine-tuned on
+CoNLL-2003, and uses `all-MiniLM-L6-v2` sentence embeddings for the topics and
+the summary.
+
+**What the plan asked for and what shipped are not the same, and the gap is
+worth stating.** The plan named spaCy for entities, BERTopic for topics and
+RAG for the summary. The entities are a real model doing that job. The topics
+are not BERTopic and the summary is not RAG:
+
+| Step | Plan | Shipped | Why |
+| --- | --- | --- | --- |
+| Entities | spaCy / BERT NER | BERT token classifier, measured | The job as specified. |
+| Topics | BERTopic | keyphrases ranked by embedding similarity | BERTopic names clusters it found in a corpus. Fitting it on somebody else's news archive and calling those clusters the subject of today's article would be a worse answer, not a better one. |
+| Summary | RAG over a self-hosted LLM | extractive: the sentences closest to the document's own embedding | Nothing here contacts a language model, so nothing here can invent a sentence the article does not contain. |
+| Sentiment | - | withheld | Good sentiment models exist and Module 3 uses one, but they are tuned on short social text. Scoring a news article with one and recording the number is the bad rating this platform declines to give. |
+
+### What the entity model is worth
+
+Measured by `manage.py evaluate_ner` on the full CoNLL-2003 test split: 3453
+sentences, 5648 gold entities, scored span-exact including the label.
+
+| Floor | Precision | Recall | F1 | Entities kept |
+| --- | --- | --- | --- | --- |
+| none | 0.9021 | 0.9182 | 0.9101 | 5749 |
+| 0.70 | 0.9162 | 0.9115 | 0.9138 | 5619 |
+| 0.85 | 0.9281 | 0.9047 | 0.9163 | 5506 |
+| **0.90** | **0.9336** | **0.8993** | **0.9161** | **5440** |
+| 0.95 | 0.9410 | 0.8892 | 0.9143 | 5337 |
+| 0.99 | 0.9542 | 0.8598 | 0.9045 | 5089 |
+
+`CONTENT_NER_MIN_CONFIDENCE` defaults to 0.90. F1 is flat from 0.85 to 0.95,
+so the floor is chosen on the other axis: 0.90 buys 3.2 points of precision
+for 1.9 points of recall, and an entity the console does not show costs an
+analyst less than one it shows wrongly.
+
+The unfiltered 0.9101 matches the 91.3 the model's own card reports, which is
+the useful part of running this at all - it says the evaluation harness is
+measuring the serving path correctly rather than measuring a bug.
+
+Two caveats the numbers do not carry. CoNLL-2003 is Reuters newswire from 1996
+and 1997 and this model was fine-tuned on its training split, so this is a
+held-out test set but it is newswire marking newswire; a forum post will do
+worse. And the corpus is tokenised, so the command rejoins the tokens into
+sentences before the model sees them, which is the shape real input arrives in
+and costs a little accuracy around punctuation.
+
+### Why the topic floor is 0.30
+
+There is no gold answer for "the right five keyphrases for this article", so
+`manage.py evaluate_topics` measures the thing the floor actually exists to
+stop: offering a phrase that is not what the document is about. It scores 300
+AG News articles against their own candidate phrases and against phrases
+lifted from other articles.
+
+Own phrases average 0.61 for the best and 0.46 for the fifth. Phrases from a
+different article average 0.05.
+
+| Floor | Keeps its best topic | Keeps its fifth | Accepts a foreign phrase |
+| --- | --- | --- | --- |
+| 0.20 | 100% | 100% | 3.5% |
+| 0.25 | 100% | 99.7% | 1.2% |
+| **0.30** | **100%** | **99.0%** | **0.5%** |
+| 0.40 | 100% | 86.7% | 0.06% |
+
+0.30 costs the weakest of five topics on one article in a hundred and halves
+the rate at which an unrelated phrase gets through.
+
+Candidates are one to three words, generated inside sentence and clause
+boundaries and never across them, and a three-word candidate has to be joined
+by a connector rather than a verb. Both rules came from reading the output:
+sliding a window over the whole document produced `orders slow shares`, the
+end of one sentence welded to the start of the next, and allowing any middle
+word produced `warned that cholera`, which is a clause with its subject
+removed rather than a name for a topic.
+
+### Using it
+
+```
+pip install -r requirements-ml.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python manage.py fetch_content_models
+```
+
+Then set `CONTENT_ANALYZER=content.ml.TransformerAnalyzer`.
+
+The weights are about 450MB, downloaded on demand into `CONTENT_MODEL_CACHE`
+(`.model-cache/`, gitignored) and never committed. `fetch_content_models`
+pulls them ahead of time so the first article analysed after a deploy is not
+the one that waits; `--check` reports whether they are already on disk without
+reaching the network. Loading is deferred to first use and memoised per
+process, so Django starts normally on a machine with no weights at all.
+
+Analysis runs in about 0.2 seconds per article on a CPU after the first load.
+The models are not loaded into the Django process in production: analysis
+happens in `content.tasks.analyze_content`, which is a Celery task.
+
+### Rebuilding the measurements
+
+```
+python manage.py evaluate_ner
+python manage.py evaluate_topics
+```
+
+Both write to `content/artifacts/`. Both are measurements rather than
+training: these two models are published fine-tuned weights, and nothing here
+fits them further.
 
 ## Module 1: is the site itself safe? - a second rating out of 10
 

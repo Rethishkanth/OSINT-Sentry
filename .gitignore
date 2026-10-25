@@ -15,3 +15,8 @@ control/
 #   manage.py build_credibility_dataset --rdap 1400
 # The MBFC dump is somebody else's editorial work and is not redistributed here.
 credibility/data/
+
+# Transformer weights, downloaded on demand by manage.py fetch_content_models.
+# Hundreds of megabytes of somebody else's published model; fetched, not
+# vendored, and never committed.
+.model-cache/

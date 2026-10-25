@@ -14,3 +14,19 @@ joblib==1.5.2
 lightgbm==4.7.0
 pandas==3.0.6
 scikit-learn==1.9.1
+
+# Module 2 (content) needs these for the transformer analyzer. torch is the
+# CPU build: this module runs one BERT and one MiniLM over article-length
+# text, which a CPU handles in about a second, and the CUDA wheel is several
+# gigabytes for a speedup nobody here is waiting on.
+#
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# datasets and seqeval are only needed by manage.py evaluate_ner. Serving
+# needs torch, transformers and sentence-transformers.
+
+torch==2.14.1
+transformers==5.20.2
+sentence-transformers==6.2.0
+datasets==5.1.0
+seqeval==1.2.2

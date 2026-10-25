@@ -282,6 +282,33 @@ CREDIBILITY_USER_AGENT = env(
 )
 CONTENT_ANALYZER = env('CONTENT_ANALYZER', default='content.pipeline.HeuristicAnalyzer')
 
+# The transformer-backed analyzer. Off by default for the same reason the
+# trained scorer is: it needs the optional ML dependencies and several
+# hundred megabytes of downloaded weights, and a platform that will not start
+# because a model file is missing is worse than one reading with regexes.
+# Point CONTENT_ANALYZER at content.ml.TransformerAnalyzer to turn it on,
+# after running: manage.py fetch_content_models
+CONTENT_MODEL_CACHE = env(
+    'CONTENT_MODEL_CACHE', default=str(BASE_DIR / '.model-cache')
+)
+CONTENT_NER_MODEL = env('CONTENT_NER_MODEL', default='dslim/bert-base-NER')
+CONTENT_EMBEDDING_MODEL = env(
+    'CONTENT_EMBEDDING_MODEL', default='sentence-transformers/all-MiniLM-L6-v2'
+)
+# Below this the model is not confident enough to name an entity, and the
+# entity is dropped rather than recorded with a shrug. Chosen from the
+# precision table manage.py evaluate_ner prints, not by taste.
+CONTENT_NER_MIN_CONFIDENCE = env.float('CONTENT_NER_MIN_CONFIDENCE', default=0.90)
+# Cosine similarity a keyphrase must reach against the document before it is
+# offered as a topic. An article with nothing above the floor gets no topics.
+# 0.30 rather than 0.25 on the table manage.py evaluate_topics prints: it
+# costs the weakest of five topics on one document in a hundred, and halves
+# again the rate at which a phrase lifted out of an unrelated article would
+# be accepted as this one's subject.
+CONTENT_TOPIC_MIN_SIMILARITY = env.float(
+    'CONTENT_TOPIC_MIN_SIMILARITY', default=0.30
+)
+
 # Module 2 reads real web pages. Point CONTENT_FETCHER at NullFetcher to make
 # the system contact nobody, the same switch NullRegistryClient gives Module 1.
 CONTENT_FETCHER = env('CONTENT_FETCHER', default='content.fetchers.WebFetcher')
