@@ -1,0 +1,59 @@
+{
+  "label_source": "Media Bias/Fact Check factual-reporting ratings",
+  "n_rows": 9613,
+  "n_with_registration_date": 1191,
+  "roc_auc": 0.7215,
+  "accuracy": 0.6703,
+  "majority_baseline": 0.6048,
+  "brier": 0.2007,
+  "min_confidence": 0.9,
+  "coverage_table": [
+    {
+      "floor": 0.5,
+      "coverage": 1.0,
+      "precision": 0.6703,
+      "n": 1923
+    },
+    {
+      "floor": 0.6,
+      "coverage": 0.4899,
+      "precision": 0.7792,
+      "n": 942
+    },
+    {
+      "floor": 0.7,
+      "coverage": 0.3198,
+      "precision": 0.8634,
+      "n": 615
+    },
+    {
+      "floor": 0.8,
+      "coverage": 0.2382,
+      "precision": 0.9148,
+      "n": 458
+    },
+    {
+      "floor": 0.85,
+      "coverage": 0.1711,
+      "precision": 0.9392,
+      "n": 329
+    },
+    {
+      "floor": 0.9,
+      "coverage": 0.1102,
+      "precision": 0.967,
+      "n": 212
+    },
+    {
+      "floor": 0.95,
+      "coverage": 0.0754,
+      "precision": 0.9724,
+      "n": 145
+    }
+  ],
+  "feature_set_comparison": {
+    "domain string only": 0.5797,
+    "registration only": 0.7993,
+    "both": 0.8121
+  }
+}
