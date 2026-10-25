@@ -20,17 +20,27 @@ fact-check lookup with no API key - each records *what it could not establish*
 rather than a zero. A zero and "nobody looked" are the same glyph on a
 dashboard and are not the same finding.
 
+The trained credibility model follows the same rule. It is right two times in
+three if forced to answer, so it is calibrated and allowed to decline instead:
+at its shipped floor it speaks about 11% of domains and is right 96.7% of the
+time when it does.
+
 ## The ML seam
 
 The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
-analysis, and an RGCN plus RoBERTa for social graph work. **None of those models
-exist here.** Each one is an abstract base class with a dependency-free
-heuristic implementation behind it, so the pipeline - tasks, gating, signals,
-endpoints, admin - is real and testable today.
+analysis, and an RGCN plus RoBERTa for social graph work. **One of them is
+trained and shipped: the credibility GBT.** The rest are abstract base classes
+with dependency-free heuristic implementations behind them, so the pipeline -
+tasks, gating, signals, endpoints, admin - is real and testable today.
+
+A fresh clone installs `requirements.txt` alone and all five modules come up,
+because nothing in the running platform imports lightgbm and no default setting
+points at a model file. Training or serving the GBT needs
+`requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model).
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
-| `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT |
+| `CREDIBILITY_SCORER` | `credibility.scoring.BaseScorer` | **real** RDAP registration age, TLD, publisher | GBT + BERT - **GBT trained, see below**; no BERT |
 | `CONTENT_ANALYZER` | `content.pipeline.BaseAnalyzer` | proper-noun NER, term-frequency topics, lead-sentence summary | spaCy, BERTopic, RAG |
 | `CONTENT_FETCHER` | `content.fetchers.BaseFetcher` | **real** feed-first fetcher over `urllib` | Scrapy spiders |
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) |
@@ -44,6 +54,102 @@ endpoints, admin - is real and testable today.
 Every heuristic reports its own `model_version` (`heuristic-v1`, etc.) on the
 rows it writes, so heuristic output is never mistaken for model output. Swapping
 in a real model is a settings change; no call site moves.
+
+## The trained credibility model
+
+A gradient-boosted tree over domain metadata, trained on 9613 domains labelled
+from Media Bias/Fact Check's factual-reporting ratings. It ships at
+`credibility/artifacts/credibility_gbt.joblib` with its measurements beside it
+in `credibility_gbt.metrics.json`.
+
+**It predicts what MBFC would say about a domain.** That is one organisation's
+editorial judgement, largely about US outlets, assembled by people and
+contested in places. It is not ground truth, and every rationale the scorer
+writes says so, because a number on a console acquires authority it has not
+earned unless something on the screen keeps saying where it came from.
+
+### Does registration metadata earn its place?
+
+The heuristic docks 25 points from a domain under a month old. That is a
+testable claim, so the training command fits three models on the 1191 domains
+that have a registration record and reports five-fold cross-validated AUC:
+
+| Features | AUC |
+| --- | --- |
+| domain string only | 0.580 |
+| registration only | 0.799 |
+| both | 0.812 |
+
+The assumption holds. Registration carries nearly all the signal, and the
+domain string on its own is barely better than a coin - worth knowing before
+anyone is tempted to judge a site by how its name reads.
+
+### Why it abstains
+
+On a held-out fifth the model reaches **0.722 AUC** and **67.0% accuracy**
+against a **60.5% majority baseline**. A real edge, and a modest one. A softmax
+emits a number regardless, so the probability is isotonic-calibrated and the
+scorer stays silent below a confidence floor:
+
+| Floor | Speaks on | Right when it speaks |
+| --- | --- | --- |
+| 0.50 | 100.0% | 67.0% |
+| 0.70 | 32.0% | 86.3% |
+| 0.80 | 23.8% | 91.5% |
+| **0.90** | **11.0%** | **96.7%** |
+| 0.95 | 7.5% | 97.2% |
+
+`CREDIBILITY_ML_MIN_CONFIDENCE` defaults to 0.90, chosen from that table rather
+than from taste. Forced to answer every time the model is right two times in
+three; allowed to decline, it is right nineteen times in twenty and says
+nothing about the rest. That is the platform's rule applied to a classifier:
+**no rating is given rather than a bad one.**
+
+Coverage is 11% across all domains and 23.8% among those with a registration
+record, since a domain whose registry withholds its date gives the model
+little to work with.
+
+### Using it
+
+```
+pip install -r requirements-ml.txt
+```
+
+Then point the setting at one of two scorers:
+
+| Setting value | Behaviour |
+| --- | --- |
+| `credibility.ml.BlendedScorer` | The heuristic produces the score; a confident model call moves it by `CREDIBILITY_ML_ADJUSTMENT` (default 15). This is the one to deploy. |
+| `credibility.ml.GradientBoostedScorer` | The model alone. Returns `UNKNOWN` for the ~89% of domains it is unsure about, which is honest and not much use as the only scorer. |
+
+Fifteen points is deliberate: it sits between "has a named publisher" (+8) and
+"has a registration date" (+18/-25), because at the shipped floor the model is
+better evidence than the first and weaker than the second.
+
+### Rebuilding it
+
+```
+python manage.py build_credibility_dataset --rdap 1400
+python manage.py train_credibility_model
+```
+
+The first command takes about twenty minutes, fetching RDAP one domain at a
+second. It is resumable and caches every response, so an interrupted run
+resumes rather than refetching.
+
+`credibility/data/` is not tracked. The MBFC dump is someone else's editorial
+work and is not redistributed here, which is why the artifact is committed
+though its corpus is not - the same trade a compiled binary makes.
+
+### The one thing to watch
+
+Training and serving must build the same feature row. They share
+`credibility/features.py` for exactly that reason, and `credibility/test_ml.py`
+compares the two paths **by value**, not just by key. An earlier version
+compared keys alone and passed while five of the eight registration columns
+were wrong at serving time: the shape was right and only the contents were
+blank. That bug cut the model's coverage from 23.8% to 1.4% without failing a
+single test.
 
 ## Module 1: is the site itself safe? - a second rating out of 10
 
@@ -586,10 +692,17 @@ backend/          Django project (settings split into base/dev/prod)
   settings/       base.py, dev.py, prod.py - configured via .env
   celery.py       Celery app instance
 core/             Source model, DRF router, shared exception handler, tasks
+  templates/public/  the landing page and privacy policy, plain HTML
+  static/favicon.svg the site icon, shared by both public pages
+  management/commands/devtoken.py  a console JWT, DEBUG only
 accounts/         Role groups (Analyst / Reviewer / Admin) as a data migration
 credibility/      CredibilityScore, SiteInspection
   registry.py     RDAP domain registration lookups
   scoring.py      registration-metadata credibility score
+  features.py     the one definition of a feature row, shared by train+serve
+  ml.py           the trained GBT scorer and the blended one; abstains
+  artifacts/      the trained model and its measurements
+  management/commands/  build_credibility_dataset, train_credibility_model
   inspection.py   fetch a site and rate its safety/clutter out of 10
   trackers.py     the ad, tracker and miner catalogue, kept readable
 content/          ContentItem, and the fetcher that fills it
@@ -662,6 +775,10 @@ cp .env.example .env      # then set SECRET_KEY
 .venv/Scripts/python.exe manage.py createsuperuser
 ```
 
+That is the whole install. `requirements-ml.txt` is separate and optional - it
+is needed only to train or serve the credibility model, and nothing in the
+running platform imports it.
+
 ## Switching to Postgres / Redis
 
 Everything above is env-driven, so moving to real infrastructure is a `.env`
@@ -699,9 +816,22 @@ cd frontend && npm run dev
 ```
 
 **The console is <http://localhost:5173> - not `:8000`.** Django serves the API
-only; `:8000` is the backend, and its root just points back here. The Vite port
-is pinned with `strictPort`, so if 5173 is taken the dev server fails loudly
-instead of quietly moving to 5174.
+and the two public pages; `:8000/` is the landing page, which points here. The
+machine-readable endpoint map moved to `/api/index/` when the landing page took
+the root URL. The Vite port is pinned with `strictPort`, so if 5173 is taken the
+dev server fails loudly instead of quietly moving to 5174.
+
+| URL | What it is |
+| --- | --- |
+| <http://localhost:5173> | the analyst console, behind a login |
+| <http://localhost:8000/> | the public landing page |
+| <http://localhost:8000/privacy/> | the privacy policy |
+| <http://localhost:8000/admin/> | Django admin |
+
+There is no sign-up. Accounts are created by the operator with
+`manage.py createsuperuser`. For a console token without typing a password into
+a form, `manage.py devtoken` prints a JWT pair and the two `localStorage` lines
+that install it; it refuses to run with `DEBUG` off.
 
 ```bash
 .venv/Scripts/celery.exe -A backend worker -l info --pool=solo
@@ -719,7 +849,9 @@ Smoke-test the worker:
 
 | Endpoint | Auth | Purpose |
 | --- | --- | --- |
-| `GET /` | none | API index - endpoint map and the console's address |
+| `GET /` | none | public landing page |
+| `GET /privacy/` | none | privacy policy |
+| `GET /api/index/` | none | API index - endpoint map and the console's address |
 | `GET /api/health/` | none | liveness check |
 | `POST /api/auth/token/` | none | obtain JWT access/refresh pair |
 | `POST /api/auth/token/refresh/` | none | refresh access token |
