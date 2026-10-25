@@ -1,0 +1,16 @@
+# Optional dependencies for training and serving the learned models.
+#
+# Nothing in the running platform imports these. Every module ships a
+# dependency-free default, so a fresh clone installs requirements.txt alone
+# and all five modules come up. Install this file only to train a model or to
+# point a *_SCORER setting at a trained one.
+#
+#     pip install -r requirements-ml.txt
+#
+# Module 1 (credibility) needs these four and nothing more: the model is a
+# gradient-boosted tree over domain metadata and trains on a CPU in seconds.
+
+joblib==1.5.2
+lightgbm==4.7.0
+pandas==3.0.6
+scikit-learn==1.9.1

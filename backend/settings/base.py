@@ -248,6 +248,21 @@ CELERY_BEAT_SCHEDULE = {
 
 CREDIBILITY_SCORER = env('CREDIBILITY_SCORER', default='credibility.scoring.HeuristicScorer')
 
+# The trained gradient-boosted scorer. Off by default: it needs the optional
+# ML dependencies (requirements-ml.txt) and a model artifact, and a platform
+# that will not start because a .joblib is missing is worse than one scoring
+# on hand-written weights. Point CREDIBILITY_SCORER at
+# credibility.ml.BlendedScorer to turn it on.
+CREDIBILITY_ML_ARTIFACT = env(
+    'CREDIBILITY_ML_ARTIFACT',
+    default=str(BASE_DIR / 'credibility' / 'artifacts' / 'credibility_gbt.joblib'),
+)
+# Below this confidence the model declines to speak and contributes nothing.
+# Chosen from the coverage table train_credibility_model prints, not by taste.
+CREDIBILITY_ML_MIN_CONFIDENCE = env.float('CREDIBILITY_ML_MIN_CONFIDENCE', default=0.90)
+# How far a confident model call may move the heuristic's score.
+CREDIBILITY_ML_ADJUSTMENT = env.float('CREDIBILITY_ML_ADJUSTMENT', default=15.0)
+
 # Domain registration lookups over RDAP. This is the one part of Module 1 that
 # makes an outbound request; point it at NullRegistryClient to run offline,
 # which leaves domain age unknown rather than assuming anything.
@@ -281,7 +296,7 @@ CONTENT_FETCH_TIMEOUT = env.float('CONTENT_FETCH_TIMEOUT', default=15.0)
 # Applied to the stream, not to Content-Length. 2MB is a very long article.
 CONTENT_MAX_BYTES = env.int('CONTENT_MAX_BYTES', default=2_000_000)
 # Minimum seconds between two requests to the same host, unless the host's own
-# robots.txt asks for longer — in which case it wins.
+# robots.txt asks for longer - in which case it wins.
 CONTENT_CRAWL_DELAY = env.float('CONTENT_CRAWL_DELAY', default=2.0)
 CONTENT_MAX_REDIRECTS = env.int('CONTENT_MAX_REDIRECTS', default=5)
 CONTENT_ROBOTS_CACHE_TTL = env.float('CONTENT_ROBOTS_CACHE_TTL', default=3600.0)
@@ -292,7 +307,7 @@ CONTENT_MAX_ITEMS_PER_FETCH = env.int('CONTENT_MAX_ITEMS_PER_FETCH', default=10)
 # A person clicking "Crawl feed" overrides it.
 CONTENT_FEED_RETRY_AFTER = env.float('CONTENT_FEED_RETRY_AFTER', default=86_400.0)
 # False stores each feed entry's own summary instead of fetching the article
-# page — one request per source instead of one per article.
+# page - one request per source instead of one per article.
 CONTENT_FETCH_BODIES = env.bool('CONTENT_FETCH_BODIES', default=True)
 # Hostnames resolving to private, loopback, or link-local addresses are
 # refused. Only turn this on to crawl a site on your own network, and never in
@@ -341,7 +356,7 @@ MEDIA_ELA_MAX_EDGE = env.int('MEDIA_ELA_MAX_EDGE', default=1400)
 REPORTGIS_GEOCODER = env('REPORTGIS_GEOCODER', default='reportgis.geocode.GazetteerGeocoder')
 
 # Reports are assembled from counted figures by reportgis.reporting, one
-# template sentence per number — nothing writes prose about what the events
+# template sentence per number - nothing writes prose about what the events
 # mean. A BaseReportBuilder subclass named here replaces the writer.
 REPORTGIS_REPORT_BUILDER = env(
     'REPORTGIS_REPORT_BUILDER',
@@ -361,7 +376,7 @@ CORROBORATION_SEARCH = env(
 CORROBORATION_WINDOW_DAYS = env.int('CORROBORATION_WINDOW_DAYS', default=7)
 # Search backends AND their terms, so a long query returns nothing at all.
 # Three, not four: a fourth term does not refine the search, it empties it,
-# and precision is the similarity filter's job. Recall is what matters here —
+# and precision is the similarity filter's job. Recall is what matters here -
 # a candidate that is never returned can never be examined.
 CORROBORATION_MAX_QUERY_TERMS = env.int('CORROBORATION_MAX_QUERY_TERMS', default=3)
 CORROBORATION_MIN_SIMILARITY = env.float('CORROBORATION_MIN_SIMILARITY', default=0.30)
@@ -381,11 +396,11 @@ CORROBORATION_MAX_FEEDS = env.int('CORROBORATION_MAX_FEEDS', default=12)
 # Outlets from content.reference_outlets consulted per check, whether or not
 # they are registered as Sources. Without these, a fresh install can only
 # cross-reference against the one or two feeds someone has added, and reports
-# every story as uncorroborated — truthfully, but having looked nowhere.
+# every story as uncorroborated - truthfully, but having looked nowhere.
 CORROBORATION_MAX_REFERENCE_FEEDS = env.int('CORROBORATION_MAX_REFERENCE_FEEDS', default=10)
 # Other outlets' articles fetched in full per check, so their actual text can
 # be matched and the article's figures checked against theirs. Each is a real
-# request to someone else's server, spaced by the crawl delay — this is the
+# request to someone else's server, spaced by the crawl delay - this is the
 # main thing an analyst waits for. 0 disables deep reading entirely, which
 # also disables claim checking, since a headline cannot corroborate a figure.
 CORROBORATION_DEEP_READS = env.int('CORROBORATION_DEEP_READS', default=5)

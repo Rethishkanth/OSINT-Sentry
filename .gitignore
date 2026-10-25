@@ -10,3 +10,8 @@ mediafiles/
 *.log
 .celery-broker/
 control/
+
+# Downloaded training data and the RDAP cache. Rebuild with:
+#   manage.py build_credibility_dataset --rdap 1400
+# The MBFC dump is somebody else's editorial work and is not redistributed here.
+credibility/data/
