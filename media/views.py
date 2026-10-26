@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -48,31 +49,55 @@ class MediaItemViewSet(viewsets.ModelViewSet):
     def engine(self, request):
         """GET /api/media/items/engine/ - what the console is actually running.
 
-        The module used to announce "detector not installed" as a flat fact.
-        It now runs a real engine for part of the job and none at all for the
-        rest, so it reports which is which instead.
+        Read from the configured analyzer rather than written down, so the
+        panel cannot claim a detector the settings do not name, or deny one
+        they do.
         """
         analyzer = get_analyzer()
+        trained = bool(getattr(analyzer, 'is_trained', False))
+        capabilities = [
+            'JPEG quantization table profiling',
+            'EXIF thumbnail vs image comparison',
+            'Editor and generator metadata tags',
+            'SHA-256 fingerprinting',
+        ]
+        not_available = ['Video and audio forensics']
+        detector = None
+        if trained:
+            capabilities.insert(0, (
+                'Generated-image detection (ViT, Community Forensics) - reads '
+                'the centre of the frame, abstains below '
+                f'{analyzer.min_confidence:.2f} confidence, and can raise a '
+                'verdict to suspicious but never lower one'
+            ))
+            not_available.insert(0, (
+                'Locating a pasted or generated region inside a real '
+                'photograph (the detector reads the frame as a whole)'
+            ))
+            detector = {
+                'model': settings.MEDIA_DETECTOR_MODEL,
+                'revision': settings.MEDIA_DETECTOR_REVISION,
+                'min_confidence': analyzer.min_confidence,
+            }
+        else:
+            not_available.insert(0, (
+                'Generated-image classification (set MEDIA_FORENSICS_ANALYZER='
+                'media.ml.ViTForensics to enable the trained detector)'
+            ))
+
         return Response({
             'engine': analyzer.engine_version,
             'class': f'{type(analyzer).__module__}.{type(analyzer).__name__}',
             'image_analysis': PILLOW_AVAILABLE,
-            'deepfake_model': False,
-            'capabilities': [
-                'JPEG quantization table profiling',
-                'EXIF thumbnail vs image comparison',
-                'Editor and generator metadata tags',
-                'SHA-256 fingerprinting',
-            ],
+            'deepfake_model': trained,
+            'detector': detector,
+            'capabilities': capabilities,
             'reported_not_scored': [
                 'Error level analysis (JPEG) - measured, shown, and kept out '
                 'of the verdict: on test composites it flagged untouched '
                 'images about as often as edited ones.',
             ],
-            'not_available': [
-                'Deepfake / synthetic media classification (no model installed)',
-                'Video and audio forensics',
-            ],
+            'not_available': not_available,
         })
 
 

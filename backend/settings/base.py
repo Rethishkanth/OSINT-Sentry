@@ -398,12 +398,25 @@ SOCIAL_CAMPAIGN_MIN_SIZE = env.int('SOCIAL_CAMPAIGN_MIN_SIZE', default=3)
 # Lowering it does not find more campaigns, it finds looser ones.
 SOCIAL_CAMPAIGN_MIN_OVERLAP = env.float('SOCIAL_CAMPAIGN_MIN_OVERLAP', default=0.5)
 
-# Module 4 runs arithmetic over the file, not a model. A trained detector
-# subclasses media.forensics.BaseForensics and is named here; nothing that
-# calls it changes.
+# Module 4's default runs arithmetic over the file, not a model.
+# media.ml.ViTForensics adds the trained generated-image detector on top of
+# the same inspection; naming it here is the whole switch.
 MEDIA_FORENSICS_ANALYZER = env(
     'MEDIA_FORENSICS_ANALYZER', default='media.forensics.HeuristicForensics'
 )
+# The detector's weights, pinned to the revision that was measured. The
+# repository replaced its weights once already, and a floor chosen against
+# one upload says nothing about the next.
+MEDIA_DETECTOR_MODEL = env(
+    'MEDIA_DETECTOR_MODEL', default='buildborderless/CommunityForensics-DeepfakeDet-ViT'
+)
+MEDIA_DETECTOR_REVISION = env(
+    'MEDIA_DETECTOR_REVISION', default='ac6ee457bea904a373065754107451793b56db00'
+)
+# Chosen from the JPEG-recompressed pass of manage.py evaluate_detector: at
+# 0.95 one real photograph in 1,567 was confidently called generated, against
+# three at 0.90. See media/artifacts/vit_detector.metrics.json.
+MEDIA_DETECTOR_MIN_CONFIDENCE = env.float('MEDIA_DETECTOR_MIN_CONFIDENCE', default=0.95)
 # The quality the image is re-encoded at for error level analysis. 90 is the
 # conventional choice: high enough that an unedited photograph barely moves,
 # low enough that a region with its own compression history stands out.

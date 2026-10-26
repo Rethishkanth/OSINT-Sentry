@@ -13,6 +13,23 @@ const VERDICT_TONE = {
 }
 
 /**
+ * The detector's reading, in words.
+ *
+ * Three states, kept apart on purpose: a number, a detector that ran and
+ * declined to commit, and no detector at all. Showing the second as a dash
+ * would make an abstention look like the absence of a model.
+ */
+function detectorReading(result) {
+  if (!result) return '-'
+  if (result.deepfake_score != null) {
+    const p = result.deepfake_score
+    return `${p.toFixed(2)} ${p >= 0.5 ? 'generated' : 'photograph'}`
+  }
+  if (result.model_version?.startsWith('vit-')) return 'abstained'
+  return '-'
+}
+
+/**
  * One line of the engine's working.
  *
  * A zero-point reason is not filler. It is how this module records something
@@ -43,10 +60,11 @@ function ReasonRow({ reason }) {
 }
 
 /** The observations behind the reasons, for an analyst who wants the raw read. */
-function FindingsGrid({ findings }) {
+function FindingsGrid({ findings, result }) {
   if (!findings) return null
 
   const rows = [
+    ['Generated-image detector', detectorReading(result)],
     ['Format', findings.format || '-'],
     ['Stored quality', findings.estimated_quality ?? '-'],
     ['Quantization tables', findings.quantization_profile || '-'],
@@ -109,26 +127,47 @@ function EnginePanel() {
   if (!engine) return <div className="empty">// Querying engine…</div>
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
-      <div>
-        <div className="metric-label">Runs</div>
-        {engine.capabilities.map((c) => (
-          <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--cyan)' }}>+ {c}</div>
-        ))}
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+        <div>
+          <div className="metric-label">Runs</div>
+          {engine.capabilities.map((c) => (
+            <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--cyan)' }}>+ {c}</div>
+          ))}
+        </div>
+        <div>
+          <div className="metric-label">Measured, shown, not scored</div>
+          {(engine.reported_not_scored || []).map((c) => (
+            <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--yellow)' }}>~ {c}</div>
+          ))}
+        </div>
+        <div>
+          <div className="metric-label">Not available here</div>
+          {engine.not_available.map((c) => (
+            <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text-dim)' }}>− {c}</div>
+          ))}
+        </div>
       </div>
-      <div>
-        <div className="metric-label">Measured, shown, not scored</div>
-        {(engine.reported_not_scored || []).map((c) => (
-          <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--yellow)' }}>~ {c}</div>
-        ))}
-      </div>
-      <div>
-        <div className="metric-label">Not available here</div>
-        {engine.not_available.map((c) => (
-          <div key={c} style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text-dim)' }}>− {c}</div>
-        ))}
-      </div>
-    </div>
+
+      {engine.deepfake_model ? (
+        <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', marginBottom: 0 }}>
+          A <b style={{ color: 'var(--yellow)' }}>trained generated-image detector</b> runs
+          on top of the provenance inspection. A confident reading that an image was
+          generated raises the verdict to suspicious. A confident reading that it was
+          photographed changes nothing, because the detector misses generators it was
+          not trained on. It reads the centre of the frame as a whole, so it cannot
+          find a generated object pasted into a real photograph.
+        </p>
+      ) : (
+        <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', marginBottom: 0 }}>
+          This is a <b style={{ color: 'var(--yellow)' }}>provenance and re-encoding
+          inspection</b>, not a deepfake detector. It reads what a file records about
+          its own history and looks for places that history contradicts itself. A
+          synthetic image with clean metadata will pass it, and an honest photograph
+          that has been cropped will not.
+        </p>
+      )}
+    </>
   )
 }
 
@@ -236,7 +275,7 @@ export default function Media() {
           >
             {counted('suspicious')}
           </div>
-          <div className="metric-label">Signs of editing, short of proof</div>
+          <div className="metric-label">Signs of editing or generation, short of proof</div>
         </Panel>
         <Panel title="Inconclusive" tag="VERDICT">
           <div className="metric" style={{ color: 'var(--text-dim)' }}>
@@ -254,13 +293,6 @@ export default function Media() {
 
       <Panel title="What this module checks" tag="SCOPE">
         <EnginePanel />
-        <p style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-dim)', marginBottom: 0 }}>
-          This is a <b style={{ color: 'var(--yellow)' }}>provenance and re-encoding
-          inspection</b>, not a deepfake detector. It reads what a file records about
-          its own history and looks for places that history contradicts itself. A
-          synthetic image with clean metadata will pass it, and an honest photograph
-          that has been cropped will not.
-        </p>
       </Panel>
 
       <div style={{ height: 16 }} />
@@ -273,6 +305,7 @@ export default function Media() {
                 <tr>
                   <th>ID</th>
                   <th>Verdict</th>
+                  <th>Detector</th>
                   <th>Dimensions</th>
                   <th>SHA-256</th>
                   <th>Engine</th>
@@ -287,6 +320,7 @@ export default function Media() {
                       <tr>
                         <td className="mono-dim">#{m.id}</td>
                         <td><Badge value={m.latest_verdict} /></td>
+                        <td className="mono-dim">{detectorReading(result)}</td>
                         <td className="mono-dim">
                           {m.width && m.height ? `${m.width}×${m.height}` : '-'}
                         </td>
@@ -315,7 +349,7 @@ export default function Media() {
 
                       {openId === m.id && (
                         <tr>
-                          <td colSpan={6} style={{ background: 'rgba(0,0,0,0.35)' }}>
+                          <td colSpan={7} style={{ background: 'rgba(0,0,0,0.35)' }}>
                             <div style={{ padding: '4px 0 12px' }}>
                               {result ? (
                                 <>
@@ -340,7 +374,7 @@ export default function Media() {
                                       : <span className="mono-dim">Nothing to report.</span>}
                                   </div>
 
-                                  <FindingsGrid findings={result.details?.findings} />
+                                  <FindingsGrid findings={result.details?.findings} result={result} />
 
                                   <div className="mono-dim" style={{ marginTop: 14, fontSize: 11 }}>
                                     {m.sha256 || 'unhashed'} · {result.model_version}

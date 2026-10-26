@@ -214,6 +214,7 @@ class BaseForensics(ABC):
     """
 
     engine_version: str = 'base'
+    is_trained = False
 
     @abstractmethod
     def analyze(self, data: bytes, *, kind: str = 'image') -> ForensicResult:
@@ -224,6 +225,7 @@ class HeuristicForensics(BaseForensics):
     """Arithmetic over the file. No model, and it says so."""
 
     engine_version = ENGINE_VERSION
+    is_trained = False
 
     def analyze(self, data: bytes, *, kind: str = 'image') -> ForensicResult:
         if kind != 'image':

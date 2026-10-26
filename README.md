@@ -34,11 +34,13 @@ one it gets wrong.
 ## The ML seam
 
 The plan specifies GBT+BERT credibility scoring, spaCy/BERTopic/RAG content
-analysis, and an RGCN plus RoBERTa for social graph work. **Three of them are
-measured and shipped: the credibility GBT, the content analyzer's BERT, and
-the social module's RoBERTa pair.** The RGCN is built and trainable but
-ships with no weights, for a reason given below that is about the datasets
-rather than the code. The rest are abstract base classes with dependency-free
+analysis, an RGCN plus RoBERTa for social graph work, and a ViT for media
+forensics. **Four of them are measured and shipped: the credibility GBT, the
+content analyzer's BERT, the social module's RoBERTa pair, and the media
+module's ViT detector.** The RGCN is built and trainable but ships with no
+weights, for a reason given below that is about the datasets rather than the
+code. Module 5 has nothing to train: the plan's Nominatim is a geocoding web
+service, not a model, and the gazetteer that replaces it is a lookup table. The rest are abstract base classes with dependency-free
 heuristic implementations behind them, so the pipeline - tasks, gating,
 signals, endpoints, admin - is real and testable today.
 
@@ -46,8 +48,9 @@ A fresh clone installs `requirements.txt` alone and all five modules come up,
 because nothing in the running platform imports lightgbm or torch and no
 default setting points at a model file. The trained engines need
 `requirements-ml.txt`; see [The trained credibility model](#the-trained-credibility-model),
-[The trained content analyzer](#the-trained-content-analyzer) and
-[The trained social engines](#the-trained-social-engines).
+[The trained content analyzer](#the-trained-content-analyzer),
+[The trained social engines](#the-trained-social-engines) and
+[The trained media detector](#the-trained-media-detector).
 
 | Setting | Interface | Default (heuristic) | Plan calls for |
 | --- | --- | --- | --- |
@@ -57,7 +60,7 @@ default setting points at a model file. The trained engines need
 | `SOCIAL_GRAPH_SCORER` | `social.analysis.BaseGraphScorer` | reciprocity + neighbourhood overlap, abstaining below a floor | RGCN (PyG/DGL) - **built and trainable, ships with no weights, see below** |
 | `SOCIAL_TEXT_SCORER` | `social.analysis.BaseTextScorer` | word lexicons, abstaining on no match | RoBERTa - **trained and measured, see below** |
 | `SOCIAL_CAMPAIGN_DETECTOR` | `social.campaigns.BaseCampaignDetector` | shared-target overlap + connected components with a common core | graph clustering |
-| `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** ELA, JPEG quantisation, metadata - declining where ELA is meaningless | ViT deepfake detection |
+| `MEDIA_FORENSICS_ANALYZER` | `media.forensics.BaseForensics` | **real** JPEG quantisation, EXIF preview, metadata; ELA shown but not scored | ViT deepfake detection - **published ViT measured on its authors' held-out set, see below** |
 | `REPORTGIS_GEOCODER` | `reportgis.geocode.BaseGeocoder` | **real** gazetteer compiled into the source; no service, no key | Nominatim / commercial geocoder |
 | `REPORTGIS_REPORT_BUILDER` | `reportgis.reporting.BaseReportBuilder` | Markdown assembled from counted figures, never generated prose | LLM narrative generation |
 | `CONTENT_FACT_CHECK_CLIENT` | `content.factcheck.BaseFactCheckClient` | null client; **real** Google Fact Check Tools behind an API key | - |
@@ -433,6 +436,159 @@ Writes `social/artifacts/roberta_text.metrics.json`. It is a measurement,
 not training: both text models are published fine-tuned weights and nothing
 here fits them further. The sentiment split takes about seven minutes on a
 CPU.
+
+## The trained media detector
+
+The plan calls for a ViT deepfake detector in Module 4. `media.ml.ViTForensics`
+is one, and it was not trained here. This section says why, what was
+measured instead, and where the line sits below which it says nothing.
+
+### Whose weights, and why not ours
+
+The weights are the Community Forensics detector (Jeongsoo Park and Andrew
+Owens, CVPR 2025): a ViT-Small fine-tuned on 2.7 million images from 4,803
+generators, published by its authors under the MIT licence. The paper's
+central finding is that a detector learns the generators it was shown rather
+than generation in general, and that breadth of generators is what makes one
+hold up on new ones. A model trained on a CPU here, on a public benchmark
+covering two or three generators, would have been a worse detector than the
+one already published and no more honest for being home-made.
+
+The revision is pinned (`MEDIA_DETECTOR_REVISION`). The authors' repository
+has replaced its weights once already, to fix a config that split attention
+into the wrong number of heads, and a floor measured against one set of
+weights says nothing about the next.
+
+### What it was measured on
+
+`manage.py evaluate_detector` scores a stratified sample of the authors'
+held-out evaluation set, `OwensLab/CommunityForensics-Eval` (CC BY-NC-SA 4.0):
+51,836 real photographs and generated images, from 21 generators that were
+held out of the training set. The sample takes the same number of
+row groups from every generator and every class, so no single generator
+dominates the totals: four row groups of 25 images per generator per class,
+166 row groups and 3,930 images in all.
+
+The report covers 3,479 of them: 1,567 photographs and 1,912 generated
+images, from all 21 generators. The other 451 were never scored. Hugging
+Face was serving the last 19 row groups slowly enough that the run was
+stopped there, and the report was built from the scores already cached
+(`--cached-only`). The gap is uneven: 374 of the missing images are
+photographs from the pairs for IdeogramV1, LCM_lora_ssd1b, DeciDiffusionV2,
+LCM_lora_sdxl and the two Midjourney sets, so those generators have few or no
+photographs in the per-generator figures. The missing row groups are listed
+in the report under `sample.row_groups_missing`.
+
+It is scored twice. Once as published, and once after every image has been
+re-saved as a JPEG at quality 85, which is closer to what a picture looks
+like after it has been through a messaging app or a social network. The
+floor is chosen from the second pass. Numbers are in
+`media/artifacts/vit_detector.metrics.json`.
+
+| | as published | re-saved as JPEG, quality 85 |
+| --- | --- | --- |
+| ROC AUC | 0.9697 | 0.9504 |
+| accuracy at the 0.50 mark | 0.8945 | 0.8137 |
+| photographs read as photographs | 97.0% | 99.3% |
+| generated images read as generated | 83.3% | 66.7% |
+| mean average precision over generators | 0.9846 | 0.9602 |
+
+Recompression does not make the detector call photographs generated. It
+does the opposite: it misses twice as many of the generated images, a third
+of them rather than a sixth, and accuses fewer photographs. The ranking survives (AUC 0.95), but the scores
+slide toward *photograph*.
+
+The average hides a wide spread. After recompression, the generators it
+reads worst are Imagen3 (0.53 accuracy at 0.50), Hourglass (0.61),
+IdeogramV2 (0.62), MidjourneyV5.2 (0.70) and MidjourneyV6.1 (0.71). It
+caught only 7 of IdeogramV1's 25 generated images. The best, among them
+the LCM variants, stable_cascade and DFGAN, are above 0.95.
+
+### Why the floor is 0.95
+
+From the JPEG pass, over 1,567 photographs and 1,912 generated images:
+
+| floor | speaks on | right when it speaks | "generated" calls right | photographs called generated | generated images caught |
+| --- | --- | --- | --- | --- | --- |
+| 0.50 | 100% | 81.4% | 99.14% | 11 | 1,275 |
+| 0.70 | 95.2% | 83.2% | 99.34% | 8 | 1,207 |
+| 0.80 | 92.2% | 84.1% | 99.49% | 6 | 1,163 |
+| 0.90 | 87.5% | 85.5% | 99.73% | 3 | 1,093 |
+| **0.95** | **82.8%** | **87.2%** | **99.90%** | **1** | **1,029** |
+| 0.98 | 77.5% | 89.1% | 100% | 0 | 962 |
+| 0.99 | 73.1% | 90.4% | 100% | 0 | 901 |
+
+The floor is read from the JPEG pass, because a picture that reaches an
+analyst has usually been re-encoded at least once on the way.
+
+The column it is chosen on is *photographs called generated*. A reading of
+*generated* is the only one that changes a verdict, so a confident wrong one
+is the detector accusing a real photograph. At 0.90 that happened to three
+of 1,567. At 0.95 it happened to one, and the detector still catches 1,029
+of the 1,912 generated images. 0.98 accuses none, but in a sample this size
+the gap between one and none is not a measurement, and the higher floor
+gives up another 67 generated images to get there.
+
+Below the floor the result records that the detector would not commit, with
+its reading, and nothing else changes. Above it, a reading of *photograph*
+is recorded and changes nothing, because a detector that has not seen a
+generator misses it, and "the model found nothing" is not evidence that a
+picture is real. A reading of *generated* adds 0.45 to the suspicion and
+raises the verdict to `suspicious`. It never raises it to `manipulated`:
+that word means the file contradicts its own preview, and a generated image
+was not edited, it was made.
+
+### What it does not read
+
+**The edges of the frame.** The model resizes the shortest side to 440
+pixels and reads a 384 pixel square from the centre, as it was trained. A
+generated object pasted into the corner of a real photograph is outside what
+it looks at.
+
+**Which part.** It is a whole-image generation detector, not a splice
+detector. It cannot say which region, if any, was photographed, and the
+rationale says so on every reading.
+
+**Generators released after its training set.** The evaluation set's
+generators were held out from training, which is the best available proxy
+for that, and the per-generator figures above show how uneven the result is
+even there.
+
+Everything in Module 4's file inspection still runs underneath it: the
+quantisation tables, the EXIF preview check, error levels and the metadata.
+
+### Using it
+
+```
+pip install -r requirements-ml.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python manage.py fetch_models --module media
+```
+
+Then set `MEDIA_FORENSICS_ANALYZER=media.ml.ViTForensics`. The weights are
+about 85MB, downloaded into `CONTENT_MODEL_CACHE` (`.model-cache/`,
+gitignored) and never committed. Loading is deferred to the first image and
+memoised per process. The console's Media page marks the engine as trained
+when this class is configured.
+
+### Rebuilding the measurement
+
+```
+python manage.py evaluate_detector
+```
+
+Reads only the columns it needs from the dataset's parquet files over the
+Hugging Face hub, caches each row group's scores under `.model-cache/`, and
+writes `media/artifacts/vit_detector.metrics.json`. Almost all of the
+running time is downloading images. Scoring is quick on a CPU, and the
+147 row groups behind the numbers above took most of an evening over a home
+connection. `--groups` widens the sample and `--workers` sets the number of
+parallel downloads.
+
+A row group that fails to download is reported and left out. Running the
+command again downloads only the row groups that are still missing.
+`--cached-only` writes the report from what is already scored, lists the
+rest as missing, and downloads nothing.
 
 ## Module 1: is the site itself safe? - a second rating out of 10
 
@@ -938,23 +1094,30 @@ scores low, and accounts too thin to judge.
 
 ## Module 4: has this image been altered?
 
-`media/forensics.py` is real forensics on Pillow alone - no model, no service.
-It reads the JPEG quantisation tables, the metadata, the dimensions and the
-recompression history, and it runs error level analysis.
+`media/forensics.py` is forensics on Pillow alone - no model, no service. It
+reads the JPEG quantisation tables, the metadata, the embedded EXIF preview
+and the dimensions, and it runs error level analysis.
 
-**The interesting part is when it refuses to run ELA.** Error level analysis
-compares an image against a recompression of itself; regions that have been
-pasted in compress differently from regions that have not. That reasoning holds
-for an image compressed once. It does not hold for a PNG, which has no JPEG
-history to compare against, nor for an image saved five times by five apps, nor
-for one whose quantisation tables show it was already recompressed at a quality
-far from the one we would test at. In each of those the ELA image is bright and
-meaningless - and a bright ELA image is *extremely* persuasive to look at.
+**Error level analysis is measured, shown, and never scored.** ELA compares
+an image against a recompression of itself, on the theory that a pasted-in
+region carries its own compression history. Swept over 256 test composites
+and 64 untouched frames, the strongest formulation here flagged originals
+about as often as forgeries, so the number appears in the result for an
+analyst to look at and adds nothing to the verdict. Where its assumptions do
+not hold at all - a PNG, or a file already stored at the quality the pass
+re-encodes at - the result says which assumption failed instead of producing
+a number.
 
-So ELA is scored only where its assumptions hold, and where they do not the
-result says which assumption failed instead of producing a number. Every
-finding carries its points as `{label, points}`, so a verdict is a sum an
-analyst can argue with rather than an assertion.
+**`manipulated` is reserved for one finding.** A camera writes a small
+preview alongside the image, and when an editor forgets to rewrite it, the
+preview still shows the original picture. That contradiction is the only
+thing allowed to conclude; everything else, however much of it piles up,
+tops out at `suspicious`, because every other signal also has an innocent
+explanation. Every finding carries its points as `{label, points}`, so a
+verdict is a sum an analyst can argue with rather than an assertion.
+
+The trained generated-image detector sits on top of this inspection rather
+than replacing it; see [The trained media detector](#the-trained-media-detector).
 
 ## Module 5: where did this happen, and what does the report say?
 

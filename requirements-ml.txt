@@ -41,3 +41,8 @@ seqeval==1.2.2
 # manage.py train_graph_model and social.ml.RgcnGraphScorer.
 
 torch-geometric==2.8.1
+
+# Module 4 (media) needs nothing beyond torch and transformers. The detector's
+# preprocessing runs in Pillow, so torchvision is not required. Evaluation
+# (manage.py evaluate_detector) reads the authors' held-out set column by
+# column with pyarrow and huggingface_hub, both of which datasets installs.
